@@ -150,38 +150,77 @@ def _detect_faces_in_img(pil_img):
 # ArcFace embedding
 # ---------------------------------------------------------------------------
 
-def _arcface_embed(crop_88):
+# Canonical 5-point template ArcFace was trained on (112×112 frame)
+_ARCFACE_DST = np.array([
+    [38.2946, 51.6963],
+    [73.5318, 51.5014],
+    [56.0252, 71.7366],
+    [41.5493, 92.3655],
+    [70.7299, 92.2041],
+], dtype=np.float32)
+
+
+def _umeyama(src, dst):
+    """Least-squares similarity transform mapping src → dst (2-D points)."""
+    n        = src.shape[0]
+    src_mean = src.mean(0);  dst_mean = dst.mean(0)
+    src_c    = src - src_mean;  dst_c = dst - dst_mean
+    src_var  = (src_c ** 2).sum() / n
+    H        = (dst_c.T @ src_c) / n
+    U, S, Vt = np.linalg.svd(H)
+    D        = np.eye(2)
+    if np.linalg.det(U @ Vt) < 0:
+        D[1, 1] = -1
+    R     = U @ D @ Vt
+    scale = (S * D.diagonal()).sum() / src_var
+    t     = dst_mean - scale * R @ src_mean
+    M     = np.zeros((2, 3), dtype=np.float32)
+    M[:, :2] = scale * R
+    M[:, 2]  = t
+    return M
+
+
+def _warp_face(pil_img, kps, out=112):
+    """Warp face to ArcFace canonical 112×112 frame using 5 SCRFD keypoints."""
+    import cv2
+    src = np.array(kps[:5], dtype=np.float32)
+    M   = _umeyama(src, _ARCFACE_DST)
+    bgr = np.array(pil_img)[:, :, ::-1]           # PIL RGB → OpenCV BGR
+    aligned = cv2.warpAffine(bgr, M, (out, out), flags=cv2.INTER_LINEAR,
+                              borderMode=cv2.BORDER_REFLECT)
+    return aligned   # BGR uint8, 112×112
+
+
+def _arcface_embed(pil_img, kps):
     """
-    Return 512-dim ArcFace embedding (bytes) for an 88×88 RGB PIL crop.
-    ArcFace expects 112×112 BGR, mean-subtracted, CHW float32.
+    Return 512-dim ArcFace unit-embedding (bytes).
+    Uses proper 5-point alignment to the ArcFace canonical template.
     """
     _, rec_sess = _get_sessions()
     if rec_sess is None:
         return None
-    face = np.array(crop_88.resize((112, 112), Image.LANCZOS), dtype=np.float32)
-    face = face[:, :, ::-1]            # RGB → BGR
-    face = (face - 127.5) / 128.0
-    blob = face.transpose(2, 0, 1)[np.newaxis]
-    emb  = rec_sess.run(None, {rec_sess.get_inputs()[0].name: blob})[0][0]
-    emb  = emb / (np.linalg.norm(emb) + 1e-6)
+    aligned = _warp_face(pil_img, kps).astype(np.float32)  # BGR 112×112
+    aligned = (aligned - 127.5) / 128.0
+    blob    = aligned.transpose(2, 0, 1)[np.newaxis]
+    emb     = rec_sess.run(None, {rec_sess.get_inputs()[0].name: blob})[0][0]
+    emb     = emb / (np.linalg.norm(emb) + 1e-6)
     return emb.astype(np.float32).tobytes()
 
 
 def _face_crop(pil_img, bbox, kps, size=88):
-    """Align face using eye keypoints, return size×size crop."""
+    """Eye-aligned display crop (for the circular thumbnail — not for embedding)."""
     import math
-    iw, ih    = pil_img.size
-    le, re    = kps[0], kps[1]          # left eye, right eye keypoints
-    angle     = math.degrees(math.atan2(re[1] - le[1], re[0] - le[0]))
-    eye_cx    = (le[0] + re[0]) / 2
-    eye_cy    = (le[1] + re[1]) / 2
-    rotated   = pil_img.rotate(-angle, resample=Image.BICUBIC,
-                               center=(eye_cx, eye_cy), expand=False)
+    iw, ih = pil_img.size
+    le, re = kps[0], kps[1]
+    angle  = math.degrees(math.atan2(re[1] - le[1], re[0] - le[0]))
+    rotated = pil_img.rotate(-angle, resample=Image.BICUBIC,
+                              center=((le[0]+re[0])/2, (le[1]+re[1])/2),
+                              expand=False)
     x1, y1, x2, y2 = bbox
     pad = int(max(x2 - x1, y2 - y1) * 0.25)
     return rotated.crop((
-        max(0, x1 - pad), max(0, y1 - pad),
-        min(iw, x2 + pad), min(ih, y2 + pad),
+        max(0, x1-pad), max(0, y1-pad),
+        min(iw, x2+pad), min(ih, y2+pad),
     )).resize((size, size), Image.LANCZOS)
 
 app = Flask(__name__)
@@ -883,7 +922,7 @@ def _detect_faces(photo_id, album_id, filename, pil_img=None):
         fname     = f'face_{photo_id}_{i}.jpg'
         crop.save(os.path.join(faces_dir, fname), 'JPEG', quality=85)
         url       = f'/static/albums/{album_id}/faces/{fname}'
-        embedding = _arcface_embed(crop)
+        embedding = _arcface_embed(pil_img, kps)    # proper 5-pt aligned embed
         face_id   = db.add_face(photo_id, url, embedding=embedding)
         result.append({'id': face_id, 'crop_url': url})
 
@@ -909,7 +948,7 @@ def album_faces(album_id, photo_id):
 def _search_embedding(q_emb, album_id, always_include_photo_id=None):
     """Return set of photo_ids whose faces are similar to q_emb (ArcFace cosine)."""
     all_faces = db.get_all_album_faces(album_id)
-    THRESHOLD = 0.35   # ArcFace cosine sim: same person ≈ 0.4–0.9, different < 0.2
+    THRESHOLD = 0.40   # ArcFace cosine sim (with proper alignment): same ≈ 0.5–0.9, different < 0.3
     matched = set()
     if always_include_photo_id is not None:
         matched.add(always_include_photo_id)
@@ -961,7 +1000,7 @@ def search_by_uploaded_face(album_id):
     # Use the largest detected face
     largest_bbox, largest_kps = max(detections, key=lambda d: (d[0][2]-d[0][0]) * (d[0][3]-d[0][1]))
     crop  = _face_crop(pil_img, largest_bbox, largest_kps, size=88)
-    emb   = _arcface_embed(crop)
+    emb   = _arcface_embed(pil_img, largest_kps)
     if emb is None:
         return jsonify({'error': 'Could not compute face embedding'}), 500
     q_emb   = np.frombuffer(emb, dtype=np.float32)
