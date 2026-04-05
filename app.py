@@ -9,67 +9,180 @@ from datetime import datetime
 import qrcode
 import db
 
-_mp_detector = None
-_MP_MODEL    = os.path.join(os.path.dirname(__file__), 'blaze_face.tflite')
+_BASE        = os.path.dirname(__file__)
+_DET_MODEL   = os.path.join(_BASE, 'det_500m.onnx')    # SCRFD face detector
+_REC_MODEL   = os.path.join(_BASE, 'w600k_mbf.onnx')   # ArcFace MobileNet
+
+_det_session = None
+_rec_session = None
+_EMB_BYTES   = 512 * 4    # 512-dim float32
 
 
-def _get_detector():
-    global _mp_detector
-    if _mp_detector is None:
+def _get_sessions():
+    global _det_session, _rec_session
+    if _det_session is None:
         try:
-            from mediapipe.tasks.python import vision
-            from mediapipe.tasks import python as mp_tasks
-            base = mp_tasks.BaseOptions(model_asset_path=_MP_MODEL)
-            opts = vision.FaceDetectorOptions(
-                base_options=base,
-                min_detection_confidence=0.45,
-            )
-            _mp_detector = vision.FaceDetector.create_from_options(opts)
-        except Exception:
-            pass
-    return _mp_detector
+            import onnxruntime as ort
+            opts = ort.SessionOptions()
+            opts.inter_op_num_threads = 2
+            opts.intra_op_num_threads = 2
+            _det_session = ort.InferenceSession(_DET_MODEL, sess_options=opts,
+                                                providers=['CPUExecutionProvider'])
+            _rec_session = ort.InferenceSession(_REC_MODEL, sess_options=opts,
+                                                providers=['CPUExecutionProvider'])
+        except Exception as e:
+            print(f'Face models not available: {e}')
+    return _det_session, _rec_session
 
 
-def _mp_detect(pil_img):
-    """Return raw MediaPipe detection objects for pil_img."""
-    detector = _get_detector()
-    if detector is None:
+# ---------------------------------------------------------------------------
+# SCRFD face detection helpers
+# ---------------------------------------------------------------------------
+
+def _scrfd_preprocess(pil_img, input_size=(640, 640)):
+    """Resize + pad to input_size, return (blob, scale, (pad_x, pad_y))."""
+    iw, ih   = pil_img.size
+    scale    = min(input_size[0] / iw, input_size[1] / ih)
+    new_w    = int(iw * scale)
+    new_h    = int(ih * scale)
+    resized  = pil_img.resize((new_w, new_h), Image.LANCZOS)
+    canvas   = Image.new('RGB', input_size, (0, 0, 0))
+    pad_x    = (input_size[0] - new_w) // 2
+    pad_y    = (input_size[1] - new_h) // 2
+    canvas.paste(resized, (pad_x, pad_y))
+    arr      = np.array(canvas, dtype=np.float32)
+    arr      = (arr - 127.5) / 128.0
+    blob     = arr.transpose(2, 0, 1)[np.newaxis]   # NCHW
+    return blob, scale, (pad_x, pad_y)
+
+
+def _scrfd_postprocess(outputs, scale, pad, orig_size, conf_thresh=0.45, nms_thresh=0.4):
+    """
+    Decode SCRFD outputs → list of ((x1,y1,x2,y2), kps[5×2]) in original coords.
+    Output layout: [score8, score16, score32, box8, box16, box32, kps8, kps16, kps32]
+    """
+    strides     = [8, 16, 32]
+    num_anchors = 2
+    input_size  = 640
+    pad_x, pad_y = pad
+    orig_w, orig_h = orig_size
+
+    all_boxes, all_scores, all_kps = [], [], []
+
+    for i, stride in enumerate(strides):
+        fh = fw = input_size // stride
+
+        scores  = outputs[i    ].reshape(-1)        # (fh*fw*na,)
+        boxes   = outputs[i + 3].reshape(-1, 4)     # (fh*fw*na, 4)
+        kpoints = outputs[i + 6].reshape(-1, 10)    # (fh*fw*na, 10)
+
+        # Anchor centers: num_anchors anchors per grid cell
+        cy_g, cx_g = np.mgrid[0:fh, 0:fw]
+        cell_c  = np.stack([cx_g.ravel(), cy_g.ravel()], axis=1)   # (fh*fw, 2)
+        centers = np.repeat(cell_c, num_anchors, axis=0).astype(np.float32)
+        centers = (centers + 0.5) * stride                          # (n, 2)
+
+        cx, cy = centers[:, 0], centers[:, 1]
+        decoded = np.stack([
+            cx - boxes[:, 0] * stride,
+            cy - boxes[:, 1] * stride,
+            cx + boxes[:, 2] * stride,
+            cy + boxes[:, 3] * stride,
+        ], axis=1)
+
+        kps_dec = kpoints.reshape(-1, 5, 2).copy()
+        kps_dec[:, :, 0] = kps_dec[:, :, 0] * stride + cx[:, np.newaxis]
+        kps_dec[:, :, 1] = kps_dec[:, :, 1] * stride + cy[:, np.newaxis]
+
+        mask = scores > conf_thresh
+        all_boxes.append(decoded[mask])
+        all_scores.append(scores[mask])
+        all_kps.append(kps_dec[mask])
+
+    if not any(len(b) for b in all_boxes):
         return []
-    import mediapipe as mp
-    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.array(pil_img))
-    return detector.detect(mp_image).detections
+
+    boxes  = np.vstack(all_boxes)
+    scores = np.hstack(all_scores)
+    kps    = np.vstack(all_kps)
+
+    # NMS
+    x1, y1, x2, y2 = boxes[:, 0], boxes[:, 1], boxes[:, 2], boxes[:, 3]
+    areas  = (x2 - x1) * (y2 - y1)
+    order  = scores.argsort()[::-1]
+    keep   = []
+    while order.size:
+        i = order[0]; keep.append(i)
+        ix1 = np.maximum(x1[i], x1[order[1:]])
+        iy1 = np.maximum(y1[i], y1[order[1:]])
+        ix2 = np.minimum(x2[i], x2[order[1:]])
+        iy2 = np.minimum(y2[i], y2[order[1:]])
+        inter = np.maximum(0, ix2 - ix1) * np.maximum(0, iy2 - iy1)
+        iou   = inter / (areas[i] + areas[order[1:]] - inter + 1e-6)
+        order = order[1:][iou < nms_thresh]
+
+    results = []
+    for i in keep:
+        b = boxes[i]
+        x1o = int(np.clip((b[0] - pad_x) / scale, 0, orig_w))
+        y1o = int(np.clip((b[1] - pad_y) / scale, 0, orig_h))
+        x2o = int(np.clip((b[2] - pad_x) / scale, 0, orig_w))
+        y2o = int(np.clip((b[3] - pad_y) / scale, 0, orig_h))
+        k = kps[i].copy()
+        k[:, 0] = (k[:, 0] - pad_x) / scale
+        k[:, 1] = (k[:, 1] - pad_y) / scale
+        results.append(((x1o, y1o, x2o, y2o), k))
+    return results
 
 
-def _aligned_crop(pil_img, detection, size=88):
+def _detect_faces_in_img(pil_img):
+    """Run SCRFD → return list of ((x1,y1,x2,y2), kps) in original image coords."""
+    det_sess, _ = _get_sessions()
+    if det_sess is None:
+        return []
+    iw, ih  = pil_img.size
+    blob, scale, pad = _scrfd_preprocess(pil_img)
+    outputs = det_sess.run(None, {det_sess.get_inputs()[0].name: blob})
+    return _scrfd_postprocess(outputs, scale, pad, (iw, ih))
+
+
+# ---------------------------------------------------------------------------
+# ArcFace embedding
+# ---------------------------------------------------------------------------
+
+def _arcface_embed(crop_88):
     """
-    Return a size×size face crop aligned using the eye keypoints.
-    Aligning to a canonical upright pose before embedding makes the
-    same person recognisable across different head tilts.
+    Return 512-dim ArcFace embedding (bytes) for an 88×88 RGB PIL crop.
+    ArcFace expects 112×112 BGR, mean-subtracted, CHW float32.
     """
+    _, rec_sess = _get_sessions()
+    if rec_sess is None:
+        return None
+    face = np.array(crop_88.resize((112, 112), Image.LANCZOS), dtype=np.float32)
+    face = face[:, :, ::-1]            # RGB → BGR
+    face = (face - 127.5) / 128.0
+    blob = face.transpose(2, 0, 1)[np.newaxis]
+    emb  = rec_sess.run(None, {rec_sess.get_inputs()[0].name: blob})[0][0]
+    emb  = emb / (np.linalg.norm(emb) + 1e-6)
+    return emb.astype(np.float32).tobytes()
+
+
+def _face_crop(pil_img, bbox, kps, size=88):
+    """Align face using eye keypoints, return size×size crop."""
     import math
-    iw, ih = pil_img.size
-    kps    = detection.keypoints   # [left_eye, right_eye, nose, mouth, left_ear, right_ear]
-
-    if len(kps) >= 2:
-        le_x, le_y = kps[0].x * iw, kps[0].y * ih   # left eye  (in image coords)
-        re_x, re_y = kps[1].x * iw, kps[1].y * ih   # right eye
-        angle      = math.degrees(math.atan2(re_y - le_y, re_x - le_x))
-        eye_cx     = (le_x + re_x) / 2
-        eye_cy     = (le_y + re_y) / 2
-        # Rotate the whole image so the eye line is horizontal
-        work = pil_img.rotate(-angle, resample=Image.BICUBIC,
-                              center=(eye_cx, eye_cy), expand=False)
-    else:
-        work = pil_img
-
-    bb  = detection.bounding_box
-    x, y, w, h = bb.origin_x, bb.origin_y, bb.width, bb.height
-    pad = int(max(w, h) * 0.28)
-    crop = work.crop((
-        max(0, x - pad),  max(0, y - pad),
-        min(iw, x + w + pad), min(ih, y + h + pad),
+    iw, ih    = pil_img.size
+    le, re    = kps[0], kps[1]          # left eye, right eye keypoints
+    angle     = math.degrees(math.atan2(re[1] - le[1], re[0] - le[0]))
+    eye_cx    = (le[0] + re[0]) / 2
+    eye_cy    = (le[1] + re[1]) / 2
+    rotated   = pil_img.rotate(-angle, resample=Image.BICUBIC,
+                               center=(eye_cx, eye_cy), expand=False)
+    x1, y1, x2, y2 = bbox
+    pad = int(max(x2 - x1, y2 - y1) * 0.25)
+    return rotated.crop((
+        max(0, x1 - pad), max(0, y1 - pad),
+        min(iw, x2 + pad), min(ih, y2 + pad),
     )).resize((size, size), Image.LANCZOS)
-    return crop
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
@@ -748,52 +861,8 @@ def album_tag(album_id):
     return jsonify({'ok': True, 'tags': db.get_tags(photo_id)})
 
 
-_LBP_NEIGHBORS = [(-1,-1),(-1,0),(-1,1),(0,1),(1,1),(1,0),(1,-1),(0,-1)]
-_LBP_CELLS     = 7
-_LBP_BINS      = 64
-_EMB_BYTES     = _LBP_CELLS * _LBP_CELLS * _LBP_BINS * 4   # float32 bytes
-
-
-def _compute_embedding(crop_pil):
-    """
-    LBP (Local Binary Pattern) histogram embedding.
-    Much more robust to lighting variation than raw pixels.
-    Produces a 7×7 grid of 64-bin histograms = 3136-dim unit vector.
-    """
-    # Resize to 64×64 and apply gamma normalisation for illumination robustness
-    gray = np.array(crop_pil.convert('L').resize((64, 64), Image.LANCZOS),
-                    dtype=np.float32)
-    gray = (np.sqrt(gray / 255.0) * 255).astype(np.uint8)
-
-    center = gray[1:63, 1:63].astype(np.int16)   # 62×62 centre region
-    lbp    = np.zeros((62, 62), dtype=np.uint8)
-    for bit, (dy, dx) in enumerate(_LBP_NEIGHBORS):
-        nbr  = gray[1+dy:63+dy, 1+dx:63+dx].astype(np.int16)
-        lbp |= (nbr >= center).astype(np.uint8) << bit
-
-    # Spatial histogram over 7×7 grid
-    cs = 62 // _LBP_CELLS   # cell size in pixels (= 8)
-    features = []
-    for r in range(_LBP_CELLS):
-        for c in range(_LBP_CELLS):
-            cell = lbp[r*cs:(r+1)*cs, c*cs:(c+1)*cs]
-            hist, _ = np.histogram(cell.ravel(), bins=_LBP_BINS, range=(0, 256))
-            features.append(hist.astype(np.float32))
-
-    arr  = np.concatenate(features)           # 3136-dim
-    norm = np.linalg.norm(arr)
-    if norm > 0:
-        arr /= norm
-    return arr.tobytes()
-
-
-
 def _detect_faces(photo_id, album_id, filename, pil_img=None):
-    """Run MediaPipe face detection, save crops, store in DB. Returns face list.
-
-    Pass pil_img to detect on the original pre-filter image.
-    Omit to fall back to reading the saved file from disk.
-    """
+    """Run SCRFD detection + ArcFace embedding, save crops, store in DB."""
     if pil_img is None:
         photo_path = os.path.join(ALBUMS_DIR, album_id, filename)
         if not os.path.isfile(photo_path):
@@ -803,25 +872,18 @@ def _detect_faces(photo_id, album_id, filename, pil_img=None):
     else:
         pil_img = pil_img.convert('RGB')
 
-    # Downscale for speed; MediaPipe works on full-res but 1200px is enough
-    iw, ih  = pil_img.size
-    scale   = min(1200 / max(iw, ih), 1.0)
-    work    = pil_img if scale == 1.0 else pil_img.resize(
-                  (int(iw * scale), int(ih * scale)), Image.LANCZOS)
-
-    detections = _mp_detect(work)
+    detections = _detect_faces_in_img(pil_img)
 
     faces_dir = os.path.join(ALBUMS_DIR, album_id, 'faces')
     os.makedirs(faces_dir, exist_ok=True)
 
     result = []
-    for i, det in enumerate(detections):
-        # Aligned crop on the work-size image; embedding computed from aligned face
-        crop      = _aligned_crop(work, det, size=88)
+    for i, (bbox, kps) in enumerate(detections):
+        crop      = _face_crop(pil_img, bbox, kps, size=88)
         fname     = f'face_{photo_id}_{i}.jpg'
         crop.save(os.path.join(faces_dir, fname), 'JPEG', quality=85)
         url       = f'/static/albums/{album_id}/faces/{fname}'
-        embedding = _compute_embedding(crop)
+        embedding = _arcface_embed(crop)
         face_id   = db.add_face(photo_id, url, embedding=embedding)
         result.append({'id': face_id, 'crop_url': url})
 
@@ -845,15 +907,15 @@ def album_faces(album_id, photo_id):
 
 
 def _search_embedding(q_emb, album_id, always_include_photo_id=None):
-    """Return set of photo_ids whose faces are similar to q_emb."""
+    """Return set of photo_ids whose faces are similar to q_emb (ArcFace cosine)."""
     all_faces = db.get_all_album_faces(album_id)
-    THRESHOLD = 0.88   # LBP cosine similarity; same person ≈ 0.90+, different ≈ 0.70
+    THRESHOLD = 0.35   # ArcFace cosine sim: same person ≈ 0.4–0.9, different < 0.2
     matched = set()
     if always_include_photo_id is not None:
         matched.add(always_include_photo_id)
     for face in all_faces:
         raw = face['embedding']
-        if not raw or len(raw) != _EMB_BYTES:   # skip old/incompatible embeddings
+        if not raw or len(raw) != _EMB_BYTES:
             continue
         emb = np.frombuffer(bytes(raw), dtype=np.float32)
         if float(np.dot(q_emb, emb)) >= THRESHOLD:
@@ -886,24 +948,23 @@ def search_by_uploaded_face(album_id):
     if 'image' not in request.files:
         return jsonify({'error': 'No image'}), 400
 
-    if _get_detector() is None:
+    det_sess, _ = _get_sessions()
+    if det_sess is None:
         return jsonify({'error': 'Face detection not available'}), 503
 
-    pil_img = Image.open(BytesIO(request.files['image'].read())).convert('RGB')
-    iw, ih  = pil_img.size
-    scale   = min(1200 / max(iw, ih), 1.0)
-    work    = pil_img if scale == 1.0 else pil_img.resize(
-                  (int(iw * scale), int(ih * scale)), Image.LANCZOS)
-    detections = _mp_detect(work)
+    pil_img    = Image.open(BytesIO(request.files['image'].read())).convert('RGB')
+    detections = _detect_faces_in_img(pil_img)
 
     if not detections:
         return jsonify({'error': 'No face detected in your photo. Try a clearer front-facing shot.'}), 422
 
     # Use the largest detected face
-    largest = max(detections, key=lambda d: d.bounding_box.width * d.bounding_box.height)
-    crop    = _aligned_crop(work, largest, size=88)
-
-    q_emb = np.frombuffer(_compute_embedding(crop), dtype=np.float32)
+    largest_bbox, largest_kps = max(detections, key=lambda d: (d[0][2]-d[0][0]) * (d[0][3]-d[0][1]))
+    crop  = _face_crop(pil_img, largest_bbox, largest_kps, size=88)
+    emb   = _arcface_embed(crop)
+    if emb is None:
+        return jsonify({'error': 'Could not compute face embedding'}), 500
+    q_emb   = np.frombuffer(emb, dtype=np.float32)
     matched = _search_embedding(q_emb, album_id)
 
     # Return the crop as a data URL so the browser can show it in the filter bar

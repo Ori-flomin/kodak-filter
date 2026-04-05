@@ -49,7 +49,7 @@ Load a photo, click any film stock — the filtered result appears instantly bef
 |---|---|
 | Backend | Python 3 + Flask |
 | Image processing | Pillow + NumPy |
-| Face detection | MediaPipe BlazeFace (Tasks API) |
+| Face detection | SCRFD (via onnxruntime) |
 | Database | SQLite (WAL mode) |
 | QR codes | `qrcode[pil]` |
 | Frontend | Vanilla HTML/CSS/JS — no frameworks |
@@ -63,15 +63,16 @@ Load a photo, click any film stock — the filtered result appears instantly bef
 pip install -r requirements.txt
 ```
 
-### 2. Download the face detection model
+### 2. Download the face models
 ```bash
 python - <<'EOF'
-import urllib.request
-urllib.request.urlretrieve(
-    "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite",
-    "blaze_face.tflite"
-)
-print("Downloaded blaze_face.tflite")
+import urllib.request, zipfile, io
+url = "https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_sc.zip"
+print("Downloading SCRFD + ArcFace models...")
+data = urllib.request.urlopen(url).read()
+with zipfile.ZipFile(io.BytesIO(data)) as z:
+    z.extractall(".")
+print("Saved det_500m.onnx and w600k_mbf.onnx")
 EOF
 ```
 
@@ -117,10 +118,10 @@ Each photo passes through five ordered stages:
 
 ## Face Recognition Notes
 
-Detection uses **MediaPipe BlazeFace** (neural network, handles angles and groups well).
+Detection uses **SCRFD** (Sample and Computation Redistribution Face Detection) — a neural network from InsightFace that handles groups, angles, and small faces well.
 
-Matching uses **LBP (Local Binary Pattern) histograms** — a classic illumination-robust face descriptor. Before computing the embedding, each face crop is **aligned using the eye keypoints** (rotated so eyes are horizontal), which normalises head tilt and significantly improves cross-photo matching.
+Recognition uses **ArcFace** (MobileNet backbone, `w600k_mbf`) — a 512-dimensional deep face embedding trained with additive angular margin loss. It is substantially more robust to pose, lighting, and expression changes than classical descriptors.
+
+Before computing embeddings, each face is **aligned using the eye keypoints** returned by SCRFD (rotated so eyes are horizontal). Both models run via **onnxruntime** (CPU), no C++ build tools required.
 
 Embeddings are computed from the **original photo before the film filter is applied**, so grain and color shifts don't affect recognition.
-
-Limitation: extreme yaw (full profile) is not handled well without a deep learning face recognition model.

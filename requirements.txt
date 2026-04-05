@@ -3,4 +3,4 @@ pillow
 numpy
 qrcode[pil]
 opencv-python
-mediapipe
+onnxruntime
