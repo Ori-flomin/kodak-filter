@@ -1,0 +1,6 @@
+flask
+pillow
+numpy
+qrcode[pil]
+opencv-python
+mediapipe

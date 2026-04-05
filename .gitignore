@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+venv/
+.venv/
+env/
+
+# Database (user data, not source)
+album.db
+
+# User-uploaded photos & face crops
+static/album/
+static/albums/
+
+# ML model file (downloaded at runtime)
+blaze_face.tflite
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

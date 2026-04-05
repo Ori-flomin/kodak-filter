@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ album.name }} — Film Filter</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Georgia', serif;
+      background: #f5f0e8;
+      color: #2a2014;
+      min-height: 100vh;
+      padding-top: 52px;
+    }
+
+    /* ---- Fixed header ---- */
+    #app-header {
+      position: fixed; top: 0; left: 0; right: 0; height: 52px;
+      background: #2a2014; color: #f5d000;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 16px; z-index: 100; gap: 10px;
+    }
+    #header-album-name {
+      font-size: 1rem; font-weight: bold; letter-spacing: 0.03em;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      flex: 1; min-width: 0;
+    }
+    #header-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    #user-pill {
+      background: #4a3a24; color: #e8d8b0;
+      padding: 4px 11px; border-radius: 20px; font-size: 0.76rem;
+      max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    #share-btn {
+      background: #f5d000; color: #2a2014; border: none; border-radius: 20px;
+      padding: 5px 14px; font-family: 'Georgia', serif; font-size: 0.78rem;
+      font-weight: bold; cursor: pointer; letter-spacing: 0.04em;
+    }
+    #share-btn:hover { background: #e0bf00; }
+
+    /* ---- Modals ---- */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.72); z-index: 200;
+      align-items: center; justify-content: center; padding: 20px;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-card {
+      background: #fdfaf3; border-radius: 14px; padding: 28px 24px 24px;
+      width: 100%; max-width: 380px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.35); position: relative;
+    }
+    .modal-title { font-size: 1.15rem; font-weight: bold; margin-bottom: 5px; }
+    .modal-subtitle { font-size: 0.84rem; color: #7a6a50; margin-bottom: 16px; }
+    .modal-close {
+      position: absolute; top: 12px; right: 14px;
+      background: none; border: none; font-size: 1.4rem; color: #9a8a70; cursor: pointer;
+    }
+    .modal-close:hover { color: #2a2014; }
+    .modal-input {
+      width: 100%; padding: 10px 13px; border: 1.5px solid #e0d8c8;
+      border-radius: 8px; font-family: 'Georgia', serif; font-size: 0.92rem;
+      background: #fff; color: #2a2014; outline: none; margin-bottom: 12px;
+    }
+    .modal-input:focus { border-color: #f5d000; }
+    .modal-btn {
+      width: 100%; padding: 11px; background: #f5d000; color: #2a2014; border: none;
+      border-radius: 8px; font-family: 'Georgia', serif; font-size: 0.94rem;
+      font-weight: bold; cursor: pointer;
+    }
+    .modal-btn:hover { background: #e0bf00; }
+
+    /* Share modal */
+    #share-code-display {
+      font-family: 'Courier New', monospace; font-size: 2rem; color: #f5d000;
+      background: #2a2014; text-align: center; padding: 14px 20px;
+      border-radius: 10px; letter-spacing: 0.25em; margin-bottom: 14px;
+    }
+    #share-qr { display: block; margin: 0 auto 12px; border-radius: 8px; width: 190px; height: 190px; object-fit: contain; }
+    #copy-link-btn {
+      width: 100%; padding: 9px; background: #2a2014; color: #f5d000; border: none;
+      border-radius: 8px; font-family: 'Georgia', serif; font-size: 0.86rem;
+      font-weight: bold; cursor: pointer; margin-bottom: 6px;
+    }
+    #copy-link-btn:hover { background: #3d3020; }
+    .share-hint { text-align: center; font-size: 0.76rem; color: #9a8a70; font-style: italic; }
+
+    /* Face modal */
+    #face-modal .modal-card { max-width: 480px; }
+    #face-modal-status { text-align: center; padding: 18px; color: #7a6a50; font-size: 0.86rem; font-style: italic; }
+    #face-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(106px, 1fr));
+      gap: 12px; margin-top: 14px; max-height: 60vh; overflow-y: auto;
+    }
+    .face-card { text-align: center; }
+    .face-thumb {
+      width: 80px; height: 80px; object-fit: cover; border-radius: 50%;
+      border: 2.5px solid #e0d8c8; display: block; margin: 0 auto 5px;
+      transition: border-color 0.15s, transform 0.15s; cursor: pointer;
+    }
+    .face-thumb:hover { border-color: #f5d000; transform: scale(1.07); }
+    .face-card.active .face-thumb { border-color: #f5d000; box-shadow: 0 0 0 3px #fdf3c0; }
+    .face-hint { font-size: 0.67rem; color: #9a8a70; text-align: center; margin-top: 3px; }
+
+    /* Face filter bar */
+    #face-filter-bar {
+      display: none; align-items: center; gap: 10px; padding: 8px 13px;
+      background: #fdf3c0; border: 1.5px solid #f5d000; border-radius: 8px;
+      margin-bottom: 11px;
+    }
+    #face-filter-bar.visible { display: flex; }
+    #face-filter-thumb {
+      width: 34px; height: 34px; border-radius: 50%; object-fit: cover;
+      border: 2px solid #f5d000; flex-shrink: 0;
+    }
+    #face-filter-label { flex: 1; font-size: 0.78rem; color: #4a3a24; }
+    #face-filter-clear {
+      background: none; border: 1px solid #c8a800; color: #c8a800;
+      border-radius: 6px; padding: 3px 9px; font-size: 0.73rem; cursor: pointer;
+      font-family: 'Georgia', serif;
+    }
+    #face-filter-clear:hover { background: #fff3c0; }
+
+    /* ---- Main layout ---- */
+    #main-content { max-width: 1100px; margin: 0 auto; padding: 18px 14px 60px; }
+
+    /* ---- Upload section ---- */
+    #upload-section {
+      background: #fdfaf3; border-radius: 12px; padding: 16px 16px 14px;
+      margin-bottom: 20px; box-shadow: 0 1px 8px rgba(0,0,0,0.07);
+    }
+
+    /* Style scroller */
+    #style-scroller {
+      display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px;
+      margin-bottom: 10px; scrollbar-width: thin; scrollbar-color: #e0d8c8 transparent;
+    }
+    #style-scroller::-webkit-scrollbar { height: 4px; }
+    #style-scroller::-webkit-scrollbar-thumb { background: #e0d8c8; border-radius: 2px; }
+    .style-card {
+      flex-shrink: 0; min-width: 96px; border-radius: 8px; overflow: hidden;
+      cursor: pointer; border: 2px solid transparent; background: #f5f0e8;
+      transition: border-color 0.15s; user-select: none;
+    }
+    .style-card.selected { border-color: #f5d000; }
+    .style-card:hover { border-color: #e0bf00; }
+    .swatch { height: 38px; width: 100%; display: block; }
+    .swatch-kodak-gold  { background: linear-gradient(135deg,#c47a2a,#e8c97a,#f5ead0); }
+    .swatch-trix-bw     { background: linear-gradient(135deg,#111,#666,#ddd); }
+    .swatch-vintage-70s { background: linear-gradient(135deg,#b85a10,#d4925a,#e8d0a0); }
+    .swatch-cinematic   { background: linear-gradient(135deg,#1a5060,#3a7060 35%,#c06020 65%,#e08030); }
+    .swatch-fuji-velvia { background: linear-gradient(135deg,#1a7a30,#70b840,#e83030 70%,#c02020); }
+    .swatch-portra-400  { background: linear-gradient(135deg,#7a8090,#c0b8b0,#e8d8c8); }
+    .swatch-ilford-hp5  { background: linear-gradient(135deg,#222,#888 40%,#ccc); }
+    .style-card-name {
+      font-size: 0.68rem; font-weight: bold; color: #2a2014;
+      padding: 3px 5px 4px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    /* Options + intensity */
+    #opts-row { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 9px; }
+    .opt-toggle {
+      display: flex; align-items: center; gap: 5px;
+      background: #f5f0e8; border: 1.5px solid #e0d8c8; border-radius: 7px;
+      padding: 5px 9px; cursor: pointer; font-size: 0.76rem; color: #4a3a24;
+      transition: border-color 0.13s, background 0.13s; user-select: none;
+    }
+    .opt-toggle.active { border-color: #f5d000; background: #fdf3c0; }
+    #intensity-wrap { display: flex; align-items: center; gap: 9px; margin-bottom: 11px; }
+    #intensity-wrap label { font-size: 0.76rem; color: #7a6a50; white-space: nowrap; min-width: 64px; }
+    #intensity-slider {
+      flex: 1; -webkit-appearance: none; appearance: none; height: 4px; border-radius: 2px;
+      background: linear-gradient(to right, #f5d000 var(--pct,100%), #ddd var(--pct,100%));
+      outline: none; cursor: pointer;
+    }
+    #intensity-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 15px; height: 15px; border-radius: 50%;
+      background: #f5d000; border: 2px solid #2a2014; cursor: pointer;
+    }
+    #intensity-val { font-size: 0.76rem; color: #2a2014; font-weight: bold; min-width: 32px; text-align: right; }
+
+    /* Drop zone */
+    #drop-zone {
+      border: 2px dashed #c8a800; border-radius: 10px; padding: 22px 16px;
+      text-align: center; cursor: pointer; background: #fdfaf3;
+      transition: background 0.18s, border-color 0.18s;
+    }
+    #drop-zone:hover, #drop-zone.drag-over { background: #fdf3c0; border-color: #f5d000; }
+    #drop-zone .dz-icon { font-size: 1.8rem; display: block; margin-bottom: 4px; }
+    #drop-zone p { font-size: 0.84rem; color: #7a6a50; }
+    #file-input { display: none; }
+
+    /* Preview area */
+    #preview-wrap { display: none; }
+    .preview-inner {
+      position: relative; border-radius: 10px; overflow: hidden;
+      background: #111; line-height: 0;
+    }
+    #preview-img { width: 100%; height: auto; display: block; transition: opacity 0.2s; }
+    #preview-img.dimmed { opacity: 0.45; }
+    .preview-overlay-spin {
+      position: absolute; inset: 0; display: none;
+      align-items: center; justify-content: center;
+      background: rgba(42,32,20,0.28);
+    }
+    .preview-overlay-spin.visible { display: flex; }
+    #preview-badge {
+      position: absolute; top: 9px; left: 9px;
+      background: rgba(0,0,0,0.60); color: #f5d000;
+      font-size: 0.68rem; font-weight: bold; padding: 3px 9px;
+      border-radius: 12px; letter-spacing: 0.06em;
+    }
+    .preview-actions {
+      display: flex; gap: 8px; margin-top: 9px; align-items: center; flex-wrap: wrap;
+    }
+    .preview-hint { flex: 1; font-size: 0.76rem; color: #9a8a70; font-style: italic; }
+    #add-to-album-btn {
+      background: #f5d000; color: #2a2014; border: none; border-radius: 8px;
+      padding: 8px 16px; font-family: 'Georgia', serif; font-size: 0.85rem;
+      font-weight: bold; cursor: pointer;
+    }
+    #add-to-album-btn:hover:not(:disabled) { background: #e0bf00; }
+    #add-to-album-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    #change-photo-btn {
+      background: none; border: 1px solid #c8a800; color: #c8a800;
+      border-radius: 8px; padding: 7px 12px; font-family: 'Georgia', serif;
+      font-size: 0.80rem; cursor: pointer;
+    }
+    #change-photo-btn:hover { background: #fdf3c0; }
+
+    /* Spinner + error */
+    .spin {
+      width: 22px; height: 22px; border: 2.5px solid #e8dfc8; border-top-color: #f5d000;
+      border-radius: 50%; animation: spin 0.75s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #upload-error { color: #b33; font-size: 0.80rem; margin-top: 7px; min-height: 1em; }
+    #saving-spinner {
+      display: none; align-items: center; gap: 8px;
+      font-size: 0.82rem; color: #7a6a50; margin-top: 7px;
+    }
+    #saving-spinner.visible { display: flex; }
+
+    /* ---- Photos section ---- */
+    #photos-toolbar {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 12px; flex-wrap: wrap;
+    }
+    #search-input {
+      flex: 1; min-width: 180px; padding: 8px 12px;
+      border: 1.5px solid #e0d8c8; border-radius: 8px;
+      font-family: 'Georgia', serif; font-size: 0.86rem;
+      background: #fff; color: #2a2014; outline: none;
+    }
+    #search-input:focus { border-color: #f5d000; }
+    #photo-count { font-size: 0.78rem; color: #9a8a70; white-space: nowrap; }
+    #find-me-btn {
+      background: #2a2014; color: #f5d000; border: none; border-radius: 8px;
+      padding: 8px 13px; font-family: 'Georgia', serif; font-size: 0.80rem;
+      font-weight: bold; cursor: pointer; white-space: nowrap; flex-shrink: 0;
+      display: flex; align-items: center; gap: 5px;
+    }
+    #find-me-btn:hover { background: #3d3020; }
+    #find-me-btn.loading { opacity: 0.6; cursor: not-allowed; }
+
+    /* Photo grid */
+    #photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 11px; }
+    @media (max-width: 700px) { #photo-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 400px) { #photo-grid { grid-template-columns: 1fr; } }
+
+    .photo-card {
+      background: #fff; border-radius: 10px; overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      transition: transform 0.14s, box-shadow 0.14s;
+    }
+    .photo-card:hover { transform: translateY(-2px); box-shadow: 0 5px 18px rgba(0,0,0,0.12); }
+    .photo-card.fade-in { animation: fadeIn 0.38s ease; }
+    @keyframes fadeIn { from { opacity:0; transform: translateY(7px); } to { opacity:1; transform: translateY(0); } }
+
+    .photo-img-wrap { position: relative; aspect-ratio: 4/3; overflow: hidden; cursor: zoom-in; }
+    .photo-img-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .photo-overlay {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      background: linear-gradient(transparent, rgba(0,0,0,0.65));
+      padding: 16px 9px 7px;
+      display: flex; align-items: flex-end; justify-content: space-between; gap: 5px;
+    }
+    .style-badge {
+      background: #f5d000; color: #2a2014; font-size: 0.63rem; font-weight: bold;
+      letter-spacing: 0.06em; padding: 2px 6px; border-radius: 10px; white-space: nowrap;
+    }
+    .photo-uploader-time { font-size: 0.67rem; color: rgba(255,255,255,0.86); text-align: right; line-height: 1.3; }
+
+    .photo-meta { padding: 7px 9px 9px; }
+    .tags-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; min-height: 24px; }
+    .tag-pill {
+      background: #f5f0e8; color: #4a3a24; font-size: 0.67rem;
+      padding: 2px 7px; border-radius: 10px; border: 1px solid #e0d8c8;
+    }
+    .tag-faces-btn {
+      background: none; border: 1px dashed #c8a800; color: #c8a800;
+      font-size: 0.67rem; padding: 2px 7px; border-radius: 10px;
+      cursor: pointer; font-family: 'Georgia', serif; transition: background 0.12s;
+    }
+    .tag-faces-btn:hover { background: #fdf3c0; }
+
+    /* Empty state */
+    #empty-state { display: none; text-align: center; padding: 55px 20px; color: #9a8a70; }
+    #empty-state .empty-icon { font-size: 2.4rem; display: block; margin-bottom: 10px; }
+
+    /* Lightbox */
+    #lightbox {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.90); z-index: 300;
+      align-items: center; justify-content: center; cursor: zoom-out;
+    }
+    #lightbox.open { display: flex; }
+    #lightbox img { max-width: 94vw; max-height: 94vh; object-fit: contain; border-radius: 6px; }
+    #lightbox-close {
+      position: absolute; top: 15px; right: 18px; color: #fff;
+      font-size: 1.8rem; cursor: pointer; background: none; border: none; line-height: 1;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Fixed header -->
+  <header id="app-header">
+    <div id="header-album-name">{{ album.name }}</div>
+    <div id="header-right">
+      <div id="user-pill"></div>
+      <button id="share-btn" onclick="openShareModal()">Share</button>
+    </div>
+  </header>
+
+  <!-- Join modal -->
+  <div class="modal-overlay" id="join-modal">
+    <div class="modal-card">
+      <div class="modal-title">Welcome to {{ album.name }}</div>
+      <div class="modal-subtitle">What's your name?</div>
+      <input class="modal-input" type="text" id="join-name-input" placeholder="Your name" autocomplete="off">
+      <button class="modal-btn" onclick="submitJoin()">Join</button>
+    </div>
+  </div>
+
+  <!-- Share modal -->
+  <div class="modal-overlay" id="share-modal">
+    <div class="modal-card">
+      <button class="modal-close" onclick="closeModal('share-modal')">&times;</button>
+      <div class="modal-title">Share this album</div>
+      <div id="share-code-display"></div>
+      <img id="share-qr" src="" alt="QR code">
+      <button id="copy-link-btn" onclick="copyLink()">Copy link</button>
+      <p class="share-hint">Scan with camera to join</p>
+    </div>
+  </div>
+
+  <!-- Face modal -->
+  <div class="modal-overlay" id="face-modal">
+    <div class="modal-card" style="max-width:480px">
+      <button class="modal-close" onclick="closeModal('face-modal')">&times;</button>
+      <div class="modal-title">Faces</div>
+      <div class="modal-subtitle">Tap a face to find that person across the album</div>
+      <div id="face-modal-status">Detecting faces…<br><br><div class="spin" style="margin:0 auto"></div></div>
+      <div id="face-grid"></div>
+    </div>
+  </div>
+
+  <!-- Lightbox -->
+  <div id="lightbox" onclick="closeLightbox()">
+    <button id="lightbox-close" onclick="closeLightbox()">&times;</button>
+    <img id="lightbox-img" src="" alt="">
+  </div>
+
+  <!-- Main -->
+  <div id="main-content">
+
+    <!-- Upload section -->
+    <div id="upload-section">
+
+      <!-- Style picker -->
+      <div id="style-scroller">
+        <div class="style-card selected" data-style="kodak-gold">
+          <span class="swatch swatch-kodak-gold"></span>
+          <div class="style-card-name">Kodak Gold</div>
+        </div>
+        <div class="style-card" data-style="trix-bw">
+          <span class="swatch swatch-trix-bw"></span>
+          <div class="style-card-name">Tri-X B&amp;W</div>
+        </div>
+        <div class="style-card" data-style="vintage-70s">
+          <span class="swatch swatch-vintage-70s"></span>
+          <div class="style-card-name">Vintage 70s</div>
+        </div>
+        <div class="style-card" data-style="cinematic">
+          <span class="swatch swatch-cinematic"></span>
+          <div class="style-card-name">Cinematic</div>
+        </div>
+        <div class="style-card" data-style="fuji-velvia">
+          <span class="swatch swatch-fuji-velvia"></span>
+          <div class="style-card-name">Fuji Velvia</div>
+        </div>
+        <div class="style-card" data-style="portra-400">
+          <span class="swatch swatch-portra-400"></span>
+          <div class="style-card-name">Portra 400</div>
+        </div>
+        <div class="style-card" data-style="ilford-hp5">
+          <span class="swatch swatch-ilford-hp5"></span>
+          <div class="style-card-name">Ilford HP5</div>
+        </div>
+      </div>
+
+      <!-- Options -->
+      <div id="opts-row">
+        <div class="opt-toggle" id="toggle-leak"   onclick="toggleOpt(this)">&#9728; Light Leak</div>
+        <div class="opt-toggle" id="toggle-date"   onclick="toggleOpt(this)">&#128197; Date Stamp</div>
+        <div class="opt-toggle" id="toggle-border" onclick="toggleOpt(this)">&#127902; Film Border</div>
+      </div>
+
+      <!-- Intensity -->
+      <div id="intensity-wrap">
+        <label for="intensity-slider">Intensity</label>
+        <input type="range" id="intensity-slider" min="0" max="100" value="100">
+        <span id="intensity-val">100%</span>
+      </div>
+
+      <!-- Drop zone (shown when no file loaded) -->
+      <div id="drop-zone" onclick="document.getElementById('file-input').click()" role="button" tabindex="0">
+        <span class="dz-icon">&#127902;</span>
+        <p>Tap to load a photo</p>
+        <p style="font-size:0.73rem;color:#bbb;margin-top:3px">JPEG / PNG / WEBP</p>
+        <input type="file" id="file-input" accept="image/*">
+      </div>
+
+      <!-- Preview (shown after file loaded) -->
+      <div id="preview-wrap">
+        <div class="preview-inner">
+          <img id="preview-img" src="" alt="Preview">
+          <div class="preview-overlay-spin" id="preview-spin"><div class="spin"></div></div>
+          <div id="preview-badge">Original</div>
+        </div>
+        <div class="preview-actions">
+          <span class="preview-hint" id="preview-hint">Click a style above to preview</span>
+          <button id="add-to-album-btn" onclick="submitToAlbum()" disabled>Add to Album</button>
+          <button id="change-photo-btn" onclick="resetUpload()">Change</button>
+        </div>
+      </div>
+
+      <div id="upload-error"></div>
+      <div id="saving-spinner"><div class="spin"></div> Saving to album…</div>
+    </div>
+
+    <!-- Photos -->
+    <div id="photos-section">
+      <div id="photos-toolbar">
+        <button id="find-me-btn" onclick="document.getElementById('find-me-input').click()">&#128247; Find me in album</button>
+        <input type="file" id="find-me-input" accept="image/*" style="display:none">
+        <input type="text" id="search-input" placeholder="Filter by uploader…" oninput="filterPhotos(this.value)">
+        <span id="photo-count">0 photos</span>
+      </div>
+      <div id="face-filter-bar">
+        <img id="face-filter-thumb" src="" alt="">
+        <span id="face-filter-label">Showing photos with this person</span>
+        <button id="face-filter-clear" onclick="clearFaceFilter()">× Clear</button>
+      </div>
+      <div id="empty-state">
+        <span class="empty-icon">&#127902;</span>
+        <p>No photos yet. Be the first to add one!</p>
+      </div>
+      <div id="photo-grid"></div>
+    </div>
+  </div>
+
+  <script>
+    const albumId   = '{{ album.id }}';
+    const albumName = '{{ album.name | e }}';
+
+    const STYLE_NAMES = {
+      'kodak-gold': 'Kodak Gold', 'trix-bw': 'Tri-X B&W',
+      'vintage-70s': 'Vintage 70s', 'cinematic': 'Cinematic',
+      'fuji-velvia': 'Fuji Velvia', 'portra-400': 'Portra 400',
+      'ilford-hp5': 'Ilford HP5',
+    };
+
+    // ---- State ----
+    let myName        = localStorage.getItem('name_' + albumId) || '';
+    let selectedStyle = 'kodak-gold';
+    let optLeak = false, optDate = false, optBorder = false;
+    let maxKnownId    = 0;
+    let allPhotos     = [];
+    let pollTimer     = null;
+
+    // Preview state
+    let currentFile        = null;
+    let currentPreviewBlob = null;   // blob URL of last successful preview
+    let previewAbort       = null;   // AbortController for in-flight preview
+    let previewDebounce    = null;
+
+    // Face modal state
+    let faceModalPhotoId = null;
+    let faceFilterPhotoIds = null;   // Set<number> when active, null = no filter
+    let faceFilterCropUrl  = null;
+
+    // ---- DOM ready ----
+    document.addEventListener('DOMContentLoaded', () => {
+      if (!myName) {
+        document.getElementById('join-modal').classList.add('open');
+      } else {
+        init();
+      }
+
+      // Intensity slider
+      const slider = document.getElementById('intensity-slider');
+      slider.addEventListener('input', () => {
+        const v = slider.value;
+        document.getElementById('intensity-val').textContent = v + '%';
+        slider.style.setProperty('--pct', v + '%');
+        schedulePreview(300);
+      });
+
+      // Style cards
+      document.querySelectorAll('.style-card').forEach(card => {
+        card.addEventListener('click', () => {
+          document.querySelectorAll('.style-card').forEach(c => c.classList.remove('selected'));
+          card.classList.add('selected');
+          selectedStyle = card.dataset.style;
+          triggerPreview();
+        });
+      });
+
+      // Drop zone drag/drop
+      const dz = document.getElementById('drop-zone');
+      dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+      dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+      dz.addEventListener('drop', e => {
+        e.preventDefault(); dz.classList.remove('drag-over');
+        if (e.dataTransfer.files[0]) handleFileSelect(e.dataTransfer.files[0]);
+      });
+      document.getElementById('file-input').addEventListener('change', e => {
+        if (e.target.files[0]) handleFileSelect(e.target.files[0]);
+        e.target.value = '';
+      });
+      dz.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') document.getElementById('file-input').click(); });
+
+      document.getElementById('join-name-input').addEventListener('keydown', e => { if (e.key === 'Enter') submitJoin(); });
+      document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeLightbox(); closeModal('share-modal'); closeModal('face-modal'); } });
+    });
+
+    // ---- Join ----
+    function submitJoin() {
+      const v = document.getElementById('join-name-input').value.trim();
+      if (!v) { document.getElementById('join-name-input').focus(); return; }
+      myName = v;
+      localStorage.setItem('name_' + albumId, myName);
+      document.getElementById('join-modal').classList.remove('open');
+      init();
+    }
+
+    function init() {
+      document.getElementById('user-pill').textContent = myName;
+      loadAllPhotos();
+      startPolling();
+    }
+
+    // ---- Load / poll photos ----
+    async function loadAllPhotos() {
+      try {
+        const photos = await (await fetch('/a/' + albumId + '/photos?since=0')).json();
+        allPhotos = []; maxKnownId = 0;
+        document.getElementById('photo-grid').innerHTML = '';
+        photos.forEach(p => { allPhotos.push(p); if (p.id > maxKnownId) maxKnownId = p.id; appendPhoto(p); });
+        updatePhotoCount(); updateEmptyState();
+      } catch(e) { console.error(e); }
+    }
+
+    function startPolling() {
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(async () => {
+        try {
+          const photos = await (await fetch('/a/' + albumId + '/photos?since=' + maxKnownId)).json();
+          photos.forEach(p => {
+            allPhotos.unshift(p);
+            if (p.id > maxKnownId) maxKnownId = p.id;
+            prependPhoto(p);
+          });
+          if (photos.length) { updatePhotoCount(); updateEmptyState(); }
+        } catch(e) {}
+      }, 5000);
+    }
+
+    // ---- Preview flow ----
+    function handleFileSelect(file) {
+      if (!file.type.startsWith('image/')) {
+        document.getElementById('upload-error').textContent = 'Please select an image file.';
+        return;
+      }
+      if (file.size > 16 * 1024 * 1024) {
+        document.getElementById('upload-error').textContent = 'File too large (max 16 MB).';
+        return;
+      }
+      currentFile = file;
+      document.getElementById('upload-error').textContent = '';
+
+      // Show original immediately
+      document.getElementById('preview-img').src = URL.createObjectURL(file);
+      document.getElementById('preview-badge').textContent = 'Original';
+      document.getElementById('preview-hint').textContent = 'Click a style to preview';
+      document.getElementById('add-to-album-btn').disabled = true;
+      document.getElementById('drop-zone').style.display = 'none';
+      document.getElementById('preview-wrap').style.display = 'block';
+
+      // Auto-preview with currently selected style
+      triggerPreview();
+    }
+
+    function resetUpload() {
+      currentFile = null;
+      if (previewAbort) { previewAbort.abort(); previewAbort = null; }
+      if (currentPreviewBlob) { URL.revokeObjectURL(currentPreviewBlob); currentPreviewBlob = null; }
+      document.getElementById('drop-zone').style.display = '';
+      document.getElementById('preview-wrap').style.display = 'none';
+      document.getElementById('upload-error').textContent = '';
+      document.getElementById('saving-spinner').classList.remove('visible');
+      document.getElementById('file-input').value = '';
+    }
+
+    function schedulePreview(delay) {
+      clearTimeout(previewDebounce);
+      previewDebounce = setTimeout(triggerPreview, delay);
+    }
+
+    async function triggerPreview() {
+      if (!currentFile) return;
+
+      // Cancel previous in-flight request
+      if (previewAbort) previewAbort.abort();
+      previewAbort = new AbortController();
+
+      const img = document.getElementById('preview-img');
+      img.classList.add('dimmed');
+      document.getElementById('preview-spin').classList.add('visible');
+      document.getElementById('preview-badge').textContent = STYLE_NAMES[selectedStyle] + '…';
+      document.getElementById('add-to-album-btn').disabled = true;
+
+      const fd = new FormData();
+      fd.append('image',       currentFile);
+      fd.append('style',       selectedStyle);
+      fd.append('intensity',   document.getElementById('intensity-slider').value);
+      fd.append('light_leak',  optLeak   ? '1' : '0');
+      fd.append('date_stamp',  optDate   ? '1' : '0');
+      fd.append('film_border', optBorder ? '1' : '0');
+
+      try {
+        const res = await fetch('/upload', { method: 'POST', body: fd, signal: previewAbort.signal });
+        if (!res.ok) throw new Error('Preview failed');
+        const blob = await res.blob();
+        if (currentPreviewBlob) URL.revokeObjectURL(currentPreviewBlob);
+        currentPreviewBlob = URL.createObjectURL(blob);
+        img.src = currentPreviewBlob;
+        document.getElementById('preview-badge').textContent = STYLE_NAMES[selectedStyle];
+        document.getElementById('preview-hint').textContent = 'Looking good? Add it to the album.';
+        document.getElementById('add-to-album-btn').disabled = false;
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          document.getElementById('preview-badge').textContent = STYLE_NAMES[selectedStyle];
+          document.getElementById('upload-error').textContent = 'Preview error: ' + err.message;
+        }
+      } finally {
+        img.classList.remove('dimmed');
+        document.getElementById('preview-spin').classList.remove('visible');
+      }
+    }
+
+    async function submitToAlbum() {
+      if (!currentFile) return;
+      document.getElementById('add-to-album-btn').disabled = true;
+      document.getElementById('saving-spinner').classList.add('visible');
+      document.getElementById('upload-error').textContent = '';
+
+      const fd = new FormData();
+      fd.append('image',       currentFile);
+      fd.append('style',       selectedStyle);
+      fd.append('uploaded_by', myName);
+      fd.append('intensity',   document.getElementById('intensity-slider').value);
+      fd.append('light_leak',  optLeak   ? '1' : '0');
+      fd.append('date_stamp',  optDate   ? '1' : '0');
+      fd.append('film_border', optBorder ? '1' : '0');
+
+      try {
+        const res = await fetch('/a/' + albumId + '/upload', { method: 'POST', body: fd });
+        if (!res.ok) throw new Error(await res.text() || 'Upload failed');
+        const photo = await res.json();
+        allPhotos.unshift(photo);
+        if (photo.id > maxKnownId) maxKnownId = photo.id;
+        prependPhoto(photo);
+        updatePhotoCount(); updateEmptyState();
+        resetUpload();          // go back to drop zone ready for next photo
+      } catch (err) {
+        document.getElementById('upload-error').textContent = 'Error: ' + err.message;
+        document.getElementById('add-to-album-btn').disabled = false;
+      } finally {
+        document.getElementById('saving-spinner').classList.remove('visible');
+      }
+    }
+
+    // ---- Options ----
+    function toggleOpt(el) {
+      el.classList.toggle('active');
+      if (el.id === 'toggle-leak')   optLeak   = el.classList.contains('active');
+      if (el.id === 'toggle-date')   optDate   = el.classList.contains('active');
+      if (el.id === 'toggle-border') optBorder = el.classList.contains('active');
+      schedulePreview(0);
+    }
+
+    // ---- Render photos ----
+    function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+    function relativeTime(iso) {
+      const s = Math.floor((Date.now() - new Date(iso.replace('Z','+00:00')).getTime()) / 1000);
+      if (s < 30) return 'just now';
+      if (s < 60) return s + 's ago';
+      if (s < 3600) return Math.floor(s/60) + 'm ago';
+      if (s < 86400) return Math.floor(s/3600) + 'h ago';
+      return Math.floor(s/86400) + 'd ago';
+    }
+
+    function renderPhoto(photo) {
+      const el = document.createElement('div');
+      el.className = 'photo-card';
+      el.dataset.photoId  = photo.id;
+      el.dataset.uploader = photo.uploaded_by;
+      const styleName = STYLE_NAMES[photo.style] || photo.style;
+      el.innerHTML = `
+        <div class="photo-img-wrap" onclick="openLightbox('${escapeHtml(photo.url)}')">
+          <img src="${escapeHtml(photo.url)}" alt="${escapeHtml(styleName)}" loading="lazy">
+          <div class="photo-overlay">
+            <span class="style-badge">${escapeHtml(styleName)}</span>
+            <div class="photo-uploader-time">
+              <div>${escapeHtml(photo.uploaded_by)}</div>
+              <div class="rel-time" data-uploaded-at="${escapeHtml(photo.uploaded_at)}">${relativeTime(photo.uploaded_at)}</div>
+            </div>
+          </div>
+        </div>
+        <div class="photo-meta">
+          <div class="tags-row">
+            <button class="tag-faces-btn" onclick="openFaceModal(${photo.id})">&#128100; Faces</button>
+          </div>
+        </div>`;
+      return el;
+    }
+
+    function appendPhoto(photo)  { document.getElementById('photo-grid').appendChild(renderPhoto(photo)); }
+    function prependPhoto(photo) { const el = renderPhoto(photo); el.classList.add('fade-in'); document.getElementById('photo-grid').insertBefore(el, document.getElementById('photo-grid').firstChild); }
+
+    function updatePhotoCount() {
+      const v = document.querySelectorAll('#photo-grid .photo-card:not([style*="display: none"])').length;
+      document.getElementById('photo-count').textContent = v + (v === 1 ? ' photo' : ' photos');
+    }
+    function updateEmptyState() {
+      document.getElementById('empty-state').style.display =
+        document.querySelectorAll('#photo-grid .photo-card').length === 0 ? 'block' : 'none';
+    }
+
+    setInterval(() => {
+      document.querySelectorAll('.rel-time').forEach(el => { el.textContent = relativeTime(el.dataset.uploadedAt); });
+    }, 30000);
+
+    // ---- Search ----
+    function filterPhotos(q) {
+      q = q.toLowerCase().trim();
+      document.querySelectorAll('#photo-grid .photo-card').forEach(card => {
+        const textMatch = !q || card.dataset.uploader.toLowerCase().includes(q);
+        const faceMatch = !faceFilterPhotoIds || faceFilterPhotoIds.has(Number(card.dataset.photoId));
+        card.style.display = (textMatch && faceMatch) ? '' : 'none';
+      });
+      updatePhotoCount();
+    }
+
+    // ---- Face modal ----
+    async function openFaceModal(photoId) {
+      faceModalPhotoId = photoId;
+      document.getElementById('face-grid').innerHTML = '';
+      document.getElementById('face-modal-status').style.display = 'block';
+      document.getElementById('face-modal-status').innerHTML = 'Detecting faces&hellip;<br><br><div class="spin" style="margin:0 auto"></div>';
+      document.getElementById('face-modal').classList.add('open');
+
+      try {
+        const res  = await fetch(`/a/${albumId}/photos/${photoId}/faces`);
+        const data = await res.json();
+        document.getElementById('face-modal-status').style.display = 'none';
+
+        if (!data.faces || data.faces.length === 0) {
+          document.getElementById('face-modal-status').textContent = 'No faces detected in this photo.';
+          document.getElementById('face-modal-status').style.display = 'block';
+        } else {
+          renderFaceGrid(data.faces);
+        }
+      } catch (err) {
+        document.getElementById('face-modal-status').textContent = 'Could not detect faces. Try again.';
+        document.getElementById('face-modal-status').style.display = 'block';
+      }
+    }
+
+    function renderFaceGrid(faces) {
+      const grid = document.getElementById('face-grid');
+      faces.forEach(face => {
+        const card = document.createElement('div');
+        card.className = 'face-card';
+        card.dataset.faceId = face.id;
+        card.innerHTML = `
+          <img src="${escapeHtml(face.crop_url)}" class="face-thumb" alt="face"
+               onclick="searchByFace(${face.id}, this)">
+          <div class="face-hint">tap to find</div>`;
+        grid.appendChild(card);
+      });
+    }
+
+    async function searchByFace(faceId, thumbEl) {
+      document.querySelectorAll('#face-grid .face-card').forEach(c => c.classList.remove('active'));
+      thumbEl.closest('.face-card').classList.add('active');
+      thumbEl.closest('.face-card').querySelector('.face-hint').textContent = 'searching…';
+
+      try {
+        const res  = await fetch(`/a/${albumId}/search-by-face/${faceId}`);
+        const data = await res.json();
+        closeModal('face-modal');
+        applyFaceFilter(data.photo_ids, data.crop_url);
+      } catch(err) {
+        thumbEl.closest('.face-card').querySelector('.face-hint').textContent = 'error — try again';
+        console.error(err);
+      }
+    }
+
+    function applyFaceFilter(photoIds, cropSrc) {
+      faceFilterPhotoIds = new Set(photoIds.map(Number));
+      faceFilterCropUrl  = cropSrc;
+      document.getElementById('face-filter-thumb').src = cropSrc || '';
+      const count = photoIds.length;
+      document.getElementById('face-filter-label').textContent =
+        count === 1 ? 'Showing 1 photo with this person'
+                    : `Showing ${count} photos with this person`;
+      document.getElementById('face-filter-bar').classList.add('visible');
+      filterPhotos(document.getElementById('search-input').value);
+      updatePhotoCount();
+    }
+
+    function clearFaceFilter() {
+      faceFilterPhotoIds = null;
+      faceFilterCropUrl  = null;
+      document.getElementById('face-filter-bar').classList.remove('visible');
+      filterPhotos(document.getElementById('search-input').value);
+      updatePhotoCount();
+    }
+
+    // ---- Find me (upload own photo) ----
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('find-me-input').addEventListener('change', async e => {
+        const file = e.target.files[0];
+        e.target.value = '';
+        if (!file) return;
+        const btn = document.getElementById('find-me-btn');
+        btn.classList.add('loading');
+        btn.textContent = '⏳ Detecting…';
+        const fd = new FormData();
+        fd.append('image', file);
+        try {
+          const res  = await fetch(`/a/${albumId}/search-by-uploaded-face`, { method: 'POST', body: fd });
+          const data = await res.json();
+          if (!res.ok) {
+            alert(data.error || 'Could not detect a face. Try a clearer front-facing photo.');
+            return;
+          }
+          applyFaceFilter(data.photo_ids, data.crop_data_url);
+        } catch(err) {
+          alert('Search failed. Please try again.');
+          console.error(err);
+        } finally {
+          btn.classList.remove('loading');
+          btn.innerHTML = '&#128100; Find me';
+        }
+      });
+    });
+
+    // ---- Lightbox ----
+    function openLightbox(url) { document.getElementById('lightbox-img').src = url; document.getElementById('lightbox').classList.add('open'); }
+    function closeLightbox()   { document.getElementById('lightbox').classList.remove('open'); }
+
+    // ---- Share ----
+    function openShareModal() {
+      document.getElementById('share-code-display').textContent = albumId;
+      document.getElementById('share-qr').src = '/a/' + albumId + '/qr?' + Date.now();
+      document.getElementById('share-modal').classList.add('open');
+    }
+    async function copyLink() {
+      try {
+        await navigator.clipboard.writeText(window.location.href);
+        const btn = document.getElementById('copy-link-btn');
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy link', 2000);
+      } catch(e) {}
+    }
+
+    // ---- Generic modal close ----
+    function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+  </script>
+</body>
+</html>

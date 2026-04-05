@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Film Filter — Shared Albums</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Georgia', serif;
+      background: #f5f0e8;
+      color: #2a2014;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px 60px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 36px;
+    }
+
+    header h1 {
+      font-size: 2.1rem;
+      letter-spacing: 0.04em;
+    }
+
+    header h1 span {
+      color: #c8a800;
+    }
+
+    header p {
+      margin-top: 8px;
+      font-size: 0.88rem;
+      color: #7a6a50;
+      font-style: italic;
+    }
+
+    .sections {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      width: 100%;
+      max-width: 480px;
+    }
+
+    .card {
+      background: #fdfaf3;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 2px 14px rgba(0,0,0,0.09);
+    }
+
+    .card-label {
+      font-size: 0.75rem;
+      font-weight: bold;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+      color: #7a6a50;
+      margin-bottom: 14px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 10px 13px;
+      border: 1.5px solid #e0d8c8;
+      border-radius: 8px;
+      font-family: 'Georgia', serif;
+      font-size: 0.92rem;
+      background: #fff;
+      color: #2a2014;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    input[type="text"]:focus {
+      border-color: #f5d000;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 11px 16px;
+      background: #f5d000;
+      color: #2a2014;
+      border: none;
+      border-radius: 8px;
+      font-family: 'Georgia', serif;
+      font-size: 0.95rem;
+      font-weight: bold;
+      cursor: pointer;
+      letter-spacing: 0.04em;
+      transition: background 0.15s;
+    }
+
+    .btn:hover {
+      background: #e0bf00;
+    }
+
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .error-msg {
+      margin-top: 10px;
+      color: #b33;
+      font-size: 0.83rem;
+      min-height: 1.1em;
+    }
+
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #bfb09a;
+      font-size: 0.78rem;
+    }
+
+    .divider::before,
+    .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: #e0d8c8;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1><span>Film</span> Filter</h1>
+    <p>Shared albums &middot; film looks &middot; real grain</p>
+  </header>
+
+  <div class="sections">
+
+    <!-- Create album -->
+    <div class="card">
+      <div class="card-label">Start a new album</div>
+      <div class="field">
+        <input type="text" id="create-album-name" placeholder="e.g. Maria's Wedding" autocomplete="off">
+        <input type="text" id="create-user-name"  placeholder="Your name" autocomplete="off">
+      </div>
+      <button class="btn" id="create-btn" onclick="handleCreate()">Create Album &rarr;</button>
+      <div class="error-msg" id="create-error"></div>
+    </div>
+
+    <div class="divider">or</div>
+
+    <!-- Join album -->
+    <div class="card">
+      <div class="card-label">Join an existing album</div>
+      <div class="field">
+        <input type="text" id="join-code"      placeholder="e.g. AB3K9F" maxlength="6" autocomplete="off"
+               oninput="this.value = this.value.toUpperCase()">
+        <input type="text" id="join-user-name" placeholder="Your name" autocomplete="off">
+      </div>
+      <button class="btn" id="join-btn" onclick="handleJoin()">Join Album &rarr;</button>
+      <div class="error-msg" id="join-error"></div>
+    </div>
+
+  </div>
+
+  <script>
+    async function handleCreate() {
+      const albumName = document.getElementById('create-album-name').value.trim();
+      const userName  = document.getElementById('create-user-name').value.trim();
+      const errEl     = document.getElementById('create-error');
+      const btn       = document.getElementById('create-btn');
+
+      errEl.textContent = '';
+
+      if (!albumName) { errEl.textContent = 'Please enter an album name.'; return; }
+      if (!userName)  { errEl.textContent = 'Please enter your name.'; return; }
+
+      btn.disabled = true;
+      btn.textContent = 'Creating…';
+
+      try {
+        const fd = new FormData();
+        fd.append('album_name', albumName);
+        fd.append('user_name', userName);
+
+        const res = await fetch('/create', { method: 'POST', body: fd });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || 'Server error');
+        }
+        const data = await res.json();
+        localStorage.setItem('name_' + data.id, userName);
+        window.location.href = '/a/' + data.id;
+      } catch (err) {
+        errEl.textContent = 'Error: ' + err.message;
+        btn.disabled = false;
+        btn.textContent = 'Create Album \u2192';
+      }
+    }
+
+    async function handleJoin() {
+      const code     = document.getElementById('join-code').value.trim().toUpperCase();
+      const userName = document.getElementById('join-user-name').value.trim();
+      const errEl    = document.getElementById('join-error');
+      const btn      = document.getElementById('join-btn');
+
+      errEl.textContent = '';
+
+      if (!code)     { errEl.textContent = 'Please enter a 6-character code.'; return; }
+      if (!userName) { errEl.textContent = 'Please enter your name.'; return; }
+
+      btn.disabled = true;
+      btn.textContent = 'Checking…';
+
+      try {
+        const res = await fetch('/a/' + code + '/exists');
+        if (!res.ok) { throw new Error('Server error'); }
+        const data = await res.json();
+        if (!data.exists) {
+          errEl.textContent = 'Album not found. Check the code and try again.';
+          btn.disabled = false;
+          btn.textContent = 'Join Album \u2192';
+          return;
+        }
+        localStorage.setItem('name_' + code, userName);
+        window.location.href = '/a/' + code;
+      } catch (err) {
+        errEl.textContent = 'Error: ' + err.message;
+        btn.disabled = false;
+        btn.textContent = 'Join Album \u2192';
+      }
+    }
+
+    // Allow pressing Enter to submit
+    document.getElementById('create-album-name').addEventListener('keydown', e => { if (e.key === 'Enter') handleCreate(); });
+    document.getElementById('create-user-name').addEventListener('keydown',  e => { if (e.key === 'Enter') handleCreate(); });
+    document.getElementById('join-code').addEventListener('keydown',      e => { if (e.key === 'Enter') handleJoin(); });
+    document.getElementById('join-user-name').addEventListener('keydown', e => { if (e.key === 'Enter') handleJoin(); });
+  </script>
+
+</body>
+</html>

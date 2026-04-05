@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Film Filter</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Georgia', serif;
+      background: #f5f0e8;
+      color: #2a2014;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 44px 20px 70px;
+    }
+
+    /* ---- Nav ---- */
+    .nav-link {
+      position: fixed; top: 16px; right: 20px;
+      background: #2a2014; color: #f5d000;
+      padding: 6px 14px; border-radius: 20px;
+      font-size: 0.78rem; font-weight: bold;
+      text-decoration: none; letter-spacing: 0.07em;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+      z-index: 50;
+    }
+    .nav-link:hover { background: #3d3020; }
+
+    /* ---- Header ---- */
+    header { text-align: center; margin-bottom: 28px; }
+    header h1 { font-size: 1.9rem; letter-spacing: 0.04em; }
+    header h1 span { color: #c8a800; }
+    header p { margin-top: 6px; font-size: 0.88rem; color: #7a6a50; font-style: italic; }
+
+    /* ---- Style picker ---- */
+    #style-picker {
+      display: flex; gap: 10px; flex-wrap: wrap;
+      justify-content: center; margin-bottom: 20px;
+      max-width: 1000px; width: 100%;
+    }
+
+    .style-card {
+      width: 124px; border-radius: 9px; overflow: hidden;
+      cursor: pointer; border: 2.5px solid transparent;
+      background: #fdfaf3; box-shadow: 0 1px 6px rgba(0,0,0,0.09);
+      transition: border-color 0.16s, transform 0.12s, box-shadow 0.16s;
+      user-select: none;
+    }
+    .style-card:hover { transform: translateY(-2px); box-shadow: 0 4px 14px rgba(0,0,0,0.13); }
+    .style-card.selected { border-color: #f5d000; box-shadow: 0 0 0 3px #f5d00050; }
+
+    .swatch { height: 52px; width: 100%; display: block; }
+    .swatch-kodak-gold  { background: linear-gradient(135deg,#c47a2a,#e8c97a,#f5ead0); }
+    .swatch-trix-bw     { background: linear-gradient(135deg,#111,#666,#ddd); }
+    .swatch-vintage-70s { background: linear-gradient(135deg,#b85a10,#d4925a,#e8d0a0); }
+    .swatch-cinematic   { background: linear-gradient(135deg,#1a5060,#3a7060 35%,#c06020 65%,#e08030); }
+    .swatch-fuji-velvia { background: linear-gradient(135deg,#1a7a30,#70b840,#e83030 70%,#c02020); }
+    .swatch-portra-400  { background: linear-gradient(135deg,#7a8090,#c0b8b0,#e8d8c8); }
+    .swatch-ilford-hp5  { background: linear-gradient(135deg,#222,#888 40%,#ccc); }
+
+    .style-info { padding: 6px 9px 8px; }
+    .style-name { font-size: 0.78rem; font-weight: bold; color: #2a2014; }
+    .style-desc { font-size: 0.68rem; color: #7a6a50; margin-top: 2px; line-height: 1.3; }
+
+    /* ---- Options row ---- */
+    #options-row {
+      display: flex; gap: 10px; flex-wrap: wrap;
+      justify-content: center; margin-bottom: 16px;
+    }
+
+    .opt-toggle {
+      display: flex; align-items: center; gap: 7px;
+      background: #fdfaf3; border: 2px solid #e0d8c8;
+      border-radius: 8px; padding: 7px 13px;
+      cursor: pointer; font-size: 0.82rem; color: #4a3a24;
+      transition: border-color 0.15s, background 0.15s;
+      user-select: none;
+    }
+    .opt-toggle.active { border-color: #f5d000; background: #fdf3c0; }
+    .opt-toggle input { display: none; }
+    .opt-icon { font-size: 1rem; }
+
+    /* ---- Intensity slider ---- */
+    #intensity-wrap {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 20px; width: 100%; max-width: 460px;
+    }
+    #intensity-wrap label { font-size: 0.82rem; color: #7a6a50; white-space: nowrap; min-width: 80px; }
+    #intensity-slider {
+      flex: 1; -webkit-appearance: none; appearance: none;
+      height: 4px; border-radius: 2px;
+      background: linear-gradient(to right, #f5d000 var(--pct,100%), #ddd var(--pct,100%));
+      outline: none; cursor: pointer;
+    }
+    #intensity-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 18px; height: 18px;
+      border-radius: 50%; background: #f5d000;
+      border: 2px solid #2a2014; cursor: pointer;
+    }
+    #intensity-val { font-size: 0.82rem; color: #2a2014; font-weight: bold; min-width: 36px; text-align: right; }
+
+    /* ---- Drop zone ---- */
+    #drop-zone {
+      width: 100%; max-width: 460px;
+      border: 2.5px dashed #c8a800; border-radius: 12px;
+      padding: 40px 24px; text-align: center; cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+      background: #fdfaf3;
+    }
+    #drop-zone:hover, #drop-zone.drag-over { background: #fdf3c0; border-color: #f5d000; }
+    #drop-zone .icon { font-size: 2.4rem; margin-bottom: 8px; display: block; }
+    #drop-zone p { font-size: 0.92rem; color: #7a6a50; }
+    #drop-zone strong { color: #c8a800; }
+    #file-input { display: none; }
+
+    #error-msg { margin-top: 10px; color: #b33; font-size: 0.87rem; min-height: 1.2em; }
+
+    /* ---- Panels ---- */
+    #panels {
+      display: flex; gap: 24px; margin-top: 28px;
+      width: 100%; max-width: 980px;
+      flex-wrap: wrap; justify-content: center;
+    }
+
+    .panel {
+      flex: 1 1 380px; max-width: 460px;
+      background: #fdfaf3; border-radius: 10px;
+      overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.09);
+      display: none; flex-direction: column;
+    }
+    .panel.visible { display: flex; }
+
+    .panel-label {
+      padding: 9px 14px; font-size: 0.73rem;
+      letter-spacing: 0.13em; text-transform: uppercase;
+      font-weight: bold; background: #2a2014; color: #f5d000;
+    }
+    .panel img { width: 100%; height: auto; display: block; }
+
+    /* Spinner */
+    #spinner {
+      display: none; align-items: center; justify-content: center;
+      flex-direction: column; gap: 14px; padding: 52px;
+      color: #7a6a50; font-size: 0.88rem;
+    }
+    #spinner.visible { display: flex; }
+    .spin {
+      width: 34px; height: 34px;
+      border: 3px solid #e8dfc8; border-top-color: #f5d000;
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Action row */
+    .action-row {
+      display: flex; gap: 8px; padding: 10px 14px 14px; flex-wrap: wrap;
+    }
+    #download-btn, #save-btn {
+      display: none; flex: 1 1 120px; padding: 9px 14px;
+      border: none; border-radius: 6px; font-size: 0.85rem;
+      font-weight: bold; cursor: pointer; letter-spacing: 0.04em;
+      text-align: center; text-decoration: none;
+    }
+    #download-btn { background: #f5d000; color: #2a2014; }
+    #download-btn:hover { background: #e0bf00; }
+    #save-btn { background: #2a2014; color: #f5d000; }
+    #save-btn:hover { background: #3d3020; }
+    #save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    #save-toast {
+      display: none; margin: 0 14px 10px;
+      padding: 8px 12px; background: #e8f5e0; color: #2a6010;
+      border-radius: 6px; font-size: 0.8rem;
+    }
+  </style>
+</head>
+<body>
+
+  <a class="nav-link" href="/album">Album</a>
+
+  <header>
+    <h1>Film <span>Filter</span></h1>
+    <p>Choose a stock · dial the intensity · develop</p>
+  </header>
+
+  <!-- Style cards -->
+  <div id="style-picker" role="radiogroup">
+    <div class="style-card selected" data-style="kodak-gold" tabindex="0" role="radio" aria-checked="true">
+      <span class="swatch swatch-kodak-gold"></span>
+      <div class="style-info"><div class="style-name">Kodak Gold</div><div class="style-desc">Warm · faded blacks · mild grain</div></div>
+    </div>
+    <div class="style-card" data-style="trix-bw" tabindex="0" role="radio" aria-checked="false">
+      <span class="swatch swatch-trix-bw"></span>
+      <div class="style-info"><div class="style-name">Tri-X B&amp;W</div><div class="style-desc">High contrast · heavy grain</div></div>
+    </div>
+    <div class="style-card" data-style="vintage-70s" tabindex="0" role="radio" aria-checked="false">
+      <span class="swatch swatch-vintage-70s"></span>
+      <div class="style-info"><div class="style-name">Vintage 70s</div><div class="style-desc">Milky · orange cast · faded</div></div>
+    </div>
+    <div class="style-card" data-style="cinematic" tabindex="0" role="radio" aria-checked="false">
+      <span class="swatch swatch-cinematic"></span>
+      <div class="style-info"><div class="style-name">Cinematic</div><div class="style-desc">Teal shadows · orange highlights</div></div>
+    </div>
+    <div class="style-card" data-style="fuji-velvia" tabindex="0" role="radio" aria-checked="false">
+      <span class="swatch swatch-fuji-velvia"></span>
+      <div class="style-info"><div class="style-name">Fuji Velvia</div><div class="style-desc">Hyper-saturated · punchy</div></div>
+    </div>
+    <div class="style-card" data-style="portra-400" tabindex="0" role="radio" aria-checked="false">
+      <span class="swatch swatch-portra-400"></span>
+      <div class="style-info"><div class="style-name">Portra 400</div><div class="style-desc">Neutral · creamy · fine grain</div></div>
+    </div>
+    <div class="style-card" data-style="ilford-hp5" tabindex="0" role="radio" aria-checked="false">
+      <span class="swatch swatch-ilford-hp5"></span>
+      <div class="style-info"><div class="style-name">Ilford HP5</div><div class="style-desc">Soft B&amp;W · open shadows</div></div>
+    </div>
+  </div>
+
+  <!-- Optional effects -->
+  <div id="options-row">
+    <label class="opt-toggle" id="toggle-leak">
+      <input type="checkbox" id="opt-leak"> <span class="opt-icon">☀</span> Light Leak
+    </label>
+    <label class="opt-toggle" id="toggle-date">
+      <input type="checkbox" id="opt-date"> <span class="opt-icon">📅</span> Date Stamp
+    </label>
+    <label class="opt-toggle" id="toggle-border">
+      <input type="checkbox" id="opt-border"> <span class="opt-icon">🎞</span> Film Border
+    </label>
+  </div>
+
+  <!-- Intensity slider -->
+  <div id="intensity-wrap">
+    <label for="intensity-slider">Intensity</label>
+    <input type="range" id="intensity-slider" min="0" max="100" value="100">
+    <span id="intensity-val">100%</span>
+  </div>
+
+  <!-- Upload -->
+  <div id="drop-zone" role="button" tabindex="0">
+    <span class="icon">🎞</span>
+    <p>Drop a photo here or <strong>click to browse</strong></p>
+    <p style="font-size:0.76rem;margin-top:5px;color:#bbb;">JPEG / PNG / WEBP · max 10 MB</p>
+    <input type="file" id="file-input" accept="image/*">
+  </div>
+  <div id="error-msg" role="alert"></div>
+
+  <!-- Before / After panels -->
+  <div id="panels">
+    <div class="panel" id="before-panel">
+      <div class="panel-label">Before</div>
+      <img id="before-img" alt="Original photo">
+    </div>
+
+    <div class="panel" id="after-panel">
+      <div class="panel-label" id="after-label">After</div>
+      <div id="spinner"><div class="spin"></div><span id="spinner-text">Developing…</span></div>
+      <img id="after-img" alt="Processed photo" style="display:none">
+      <div class="action-row">
+        <a id="download-btn" download="film.jpg">Download</a>
+        <button id="save-btn">Save to Album</button>
+      </div>
+      <div id="save-toast"></div>
+    </div>
+  </div>
+
+  <script>
+    // ---- State ----
+    const cards       = document.querySelectorAll('.style-card');
+    const dropZone    = document.getElementById('drop-zone');
+    const fileInput   = document.getElementById('file-input');
+    const errorMsg    = document.getElementById('error-msg');
+    const beforePanel = document.getElementById('before-panel');
+    const afterPanel  = document.getElementById('after-panel');
+    const afterLabel  = document.getElementById('after-label');
+    const beforeImg   = document.getElementById('before-img');
+    const afterImg    = document.getElementById('after-img');
+    const spinner     = document.getElementById('spinner');
+    const spinnerText = document.getElementById('spinner-text');
+    const downloadBtn = document.getElementById('download-btn');
+    const saveBtn     = document.getElementById('save-btn');
+    const saveToast   = document.getElementById('save-toast');
+    const intensitySlider = document.getElementById('intensity-slider');
+    const intensityVal    = document.getElementById('intensity-val');
+
+    const optLeak   = document.getElementById('opt-leak');
+    const optDate   = document.getElementById('opt-date');
+    const optBorder = document.getElementById('opt-border');
+    const toggleLeak   = document.getElementById('toggle-leak');
+    const toggleDate   = document.getElementById('toggle-date');
+    const toggleBorder = document.getElementById('toggle-border');
+
+    const STYLE_META = {
+      'kodak-gold':  { label: 'After — Kodak Gold',   dl: 'kodak_gold.jpg',   msg: 'Developing film…' },
+      'trix-bw':     { label: 'After — Tri-X B&W',    dl: 'trix_bw.jpg',      msg: 'Developing in D-76…' },
+      'vintage-70s': { label: 'After — Vintage 70s',  dl: 'vintage_70s.jpg',  msg: 'Letting it fade…' },
+      'cinematic':   { label: 'After — Cinematic',    dl: 'cinematic.jpg',    msg: 'Grading the negative…' },
+      'fuji-velvia': { label: 'After — Fuji Velvia',  dl: 'fuji_velvia.jpg',  msg: 'Boosting the colours…' },
+      'portra-400':  { label: 'After — Portra 400',   dl: 'portra_400.jpg',   msg: 'Developing…' },
+      'ilford-hp5':  { label: 'After — Ilford HP5',   dl: 'ilford_hp5.jpg',   msg: 'Into the darkroom…' },
+    };
+
+    const MAX_BYTES = 10 * 1024 * 1024;
+    let selectedStyle = 'kodak-gold';
+    let currentFile   = null;
+    let debounceTimer = null;
+
+    // ---- Style cards ----
+    cards.forEach(card => {
+      card.addEventListener('click', () => selectCard(card));
+      card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') selectCard(card); });
+    });
+
+    function selectCard(card) {
+      cards.forEach(c => { c.classList.remove('selected'); c.setAttribute('aria-checked','false'); });
+      card.classList.add('selected');
+      card.setAttribute('aria-checked','true');
+      selectedStyle = card.dataset.style;
+      if (currentFile) scheduleProcess();
+    }
+
+    // ---- Optional effects ----
+    [toggleLeak, toggleDate, toggleBorder].forEach(lbl => {
+      lbl.addEventListener('click', () => {
+        const cb = lbl.querySelector('input');
+        cb.checked = !cb.checked;
+        lbl.classList.toggle('active', cb.checked);
+        if (currentFile) scheduleProcess();
+      });
+    });
+
+    // ---- Intensity slider ----
+    intensitySlider.addEventListener('input', () => {
+      const v = intensitySlider.value;
+      intensityVal.textContent = v + '%';
+      intensitySlider.style.setProperty('--pct', v + '%');
+    });
+    // Process only on release to avoid hammering the server
+    intensitySlider.addEventListener('change', () => { if (currentFile) scheduleProcess(); });
+
+    function scheduleProcess(delay = 0) {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => processFile(currentFile), delay);
+    }
+
+    // ---- Drop zone ----
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') fileInput.click(); });
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault(); dropZone.classList.remove('drag-over');
+      if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener('change', () => { if (fileInput.files[0]) handleFile(fileInput.files[0]); });
+
+    function handleFile(file) {
+      errorMsg.textContent = '';
+      if (!file.type.startsWith('image/')) { errorMsg.textContent = 'Please upload an image file.'; return; }
+      if (file.size > MAX_BYTES) { errorMsg.textContent = 'File too large — keep it under 10 MB.'; return; }
+      currentFile = file;
+      beforeImg.src = URL.createObjectURL(file);
+      beforePanel.classList.add('visible');
+      processFile(file);
+    }
+
+    function processFile(file) {
+      const meta = STYLE_META[selectedStyle];
+      afterLabel.textContent    = meta.label;
+      spinnerText.textContent   = meta.msg;
+
+      beforePanel.classList.add('visible');
+      afterPanel.classList.add('visible');
+      afterImg.style.display    = 'none';
+      downloadBtn.style.display = 'none';
+      saveBtn.style.display     = 'none';
+      saveToast.style.display   = 'none';
+      spinner.classList.add('visible');
+
+      const fd = new FormData();
+      fd.append('image',       file);
+      fd.append('style',       selectedStyle);
+      fd.append('intensity',   intensitySlider.value);
+      fd.append('light_leak',  optLeak.checked   ? '1' : '0');
+      fd.append('date_stamp',  optDate.checked   ? '1' : '0');
+      fd.append('film_border', optBorder.checked ? '1' : '0');
+
+      fetch('/upload', { method: 'POST', body: fd })
+        .then(r => { if (!r.ok) return r.text().then(t => { throw new Error(t || 'Server error'); }); return r.blob(); })
+        .then(blob => {
+          const url = URL.createObjectURL(blob);
+          afterImg.src              = url;
+          afterImg.style.display    = 'block';
+          downloadBtn.href          = url;
+          downloadBtn.download      = meta.dl;
+          downloadBtn.style.display = 'block';
+          saveBtn.style.display     = 'block';
+          saveBtn.disabled          = false;
+          saveBtn.textContent       = 'Save to Album';
+          spinner.classList.remove('visible');
+        })
+        .catch(err => {
+          spinner.classList.remove('visible');
+          errorMsg.textContent = 'Error: ' + err.message;
+        });
+    }
+
+    // ---- Save to album ----
+    saveBtn.addEventListener('click', () => {
+      if (!currentFile) return;
+      saveBtn.disabled    = true;
+      saveBtn.textContent = 'Saving…';
+      saveToast.style.display = 'none';
+
+      const fd = new FormData();
+      fd.append('image',       currentFile);
+      fd.append('style',       selectedStyle);
+      fd.append('intensity',   intensitySlider.value);
+      fd.append('light_leak',  optLeak.checked   ? '1' : '0');
+      fd.append('date_stamp',  optDate.checked   ? '1' : '0');
+      fd.append('film_border', optBorder.checked ? '1' : '0');
+
+      fetch('/save', { method: 'POST', body: fd })
+        .then(r => { if (!r.ok) return r.text().then(t => { throw new Error(t); }); return r.json(); })
+        .then(() => {
+          saveBtn.textContent = 'Saved ✓';
+          saveToast.style.display = 'block';
+          saveToast.textContent   = 'Photo saved to the shared album.';
+        })
+        .catch(err => {
+          saveBtn.disabled    = false;
+          saveBtn.textContent = 'Save to Album';
+          errorMsg.textContent = 'Save failed: ' + err.message;
+        });
+    });
+
+  </script>
+</body>
+</html>
