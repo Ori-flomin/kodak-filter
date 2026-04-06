@@ -47,15 +47,27 @@ def init():
                 id        INTEGER PRIMARY KEY AUTOINCREMENT,
                 photo_id  INTEGER NOT NULL,
                 crop_url  TEXT    NOT NULL,
-                embedding BLOB
+                embedding BLOB,
+                person_id INTEGER
+            )
+        ''')
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS people (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                album_id   TEXT    NOT NULL,
+                name       TEXT,
+                centroid   BLOB    NOT NULL,
+                face_count INTEGER NOT NULL DEFAULT 1
             )
         ''')
         conn.commit()
         # Migrations for existing DBs that predate these columns
         for stmt in [
-            'ALTER TABLE photos ADD COLUMN faces_detected INTEGER NOT NULL DEFAULT 0',
-            'ALTER TABLE tags   ADD COLUMN face_id INTEGER',
-            'ALTER TABLE faces  ADD COLUMN embedding BLOB',
+            'ALTER TABLE photos  ADD COLUMN faces_detected INTEGER NOT NULL DEFAULT 0',
+            'ALTER TABLE tags    ADD COLUMN face_id INTEGER',
+            'ALTER TABLE faces   ADD COLUMN embedding BLOB',
+            'ALTER TABLE faces   ADD COLUMN person_id INTEGER',
+            'ALTER TABLE people  ADD COLUMN name TEXT',
         ]:
             try:
                 conn.execute(stmt)
@@ -262,5 +274,78 @@ def get_faces(photo_id):
                 'tagged_name': tag['name'] if tag else None,
             })
         return result
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# People (centroid clusters)
+# ---------------------------------------------------------------------------
+
+def create_person(album_id, centroid):
+    """Insert a new person cluster; return its id."""
+    conn = _connect()
+    try:
+        cur = conn.execute(
+            'INSERT INTO people (album_id, centroid, face_count) VALUES (?,?,1)',
+            (album_id, centroid)
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def get_all_persons(album_id):
+    """
+    Return list of {id, name, centroid, face_count, cover_url} for this album.
+    cover_url is derived from the earliest face assigned to each person.
+    """
+    conn = _connect()
+    try:
+        rows = conn.execute('''
+            SELECT p.id, p.name, p.centroid, p.face_count,
+                   f.crop_url AS cover_url
+            FROM   people p
+            LEFT JOIN faces f
+                   ON f.id = (SELECT MIN(id) FROM faces WHERE person_id = p.id)
+            WHERE  p.album_id = ?
+        ''', (album_id,)).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def update_person(person_id, new_centroid, new_face_count):
+    """Update the running-average centroid and face count."""
+    conn = _connect()
+    try:
+        conn.execute(
+            'UPDATE people SET centroid=?, face_count=? WHERE id=?',
+            (new_centroid, new_face_count, person_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def assign_face_person(face_id, person_id):
+    """Link a face row to a person cluster."""
+    conn = _connect()
+    try:
+        conn.execute('UPDATE faces SET person_id=? WHERE id=?', (person_id, face_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_photos_for_person(person_id):
+    """Return distinct photo_ids for all faces assigned to this person."""
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            'SELECT DISTINCT photo_id FROM faces WHERE person_id=?', (person_id,)
+        ).fetchall()
+        return [r['photo_id'] for r in rows]
     finally:
         conn.close()

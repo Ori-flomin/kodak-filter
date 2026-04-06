@@ -19,8 +19,9 @@ album.db
 static/album/
 static/albums/
 
-# ML model file (downloaded at runtime)
+# ML model files (downloaded at runtime)
 blaze_face.tflite
+*.onnx
 
 # OS / editor
 .DS_Store

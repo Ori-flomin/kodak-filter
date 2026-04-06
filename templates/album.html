@@ -123,6 +123,29 @@
     }
     #face-filter-clear:hover { background: #fff3c0; }
 
+    /* People bar */
+    #people-bar {
+      display: none; flex-direction: column; gap: 8px;
+      background: #fdfaf3; border-radius: 10px; padding: 10px 14px 12px;
+      margin-bottom: 14px; box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+    }
+    #people-bar.visible { display: flex; }
+    #people-bar-title { font-size: 0.74rem; color: #7a6a50; letter-spacing: 0.05em; text-transform: uppercase; }
+    #people-row {
+      display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start;
+    }
+    .person-thumb {
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+      cursor: pointer; flex-shrink: 0;
+    }
+    .person-thumb img {
+      width: 52px; height: 52px; border-radius: 50%; object-fit: cover;
+      border: 2.5px solid #e0d8c8; transition: border-color 0.15s;
+    }
+    .person-thumb.active img { border-color: #f5d000; }
+    .person-thumb:hover img  { border-color: #c8a800; }
+    .person-count { font-size: 0.65rem; color: #9a8a70; }
+
     /* ---- Main layout ---- */
     #main-content { max-width: 1100px; margin: 0 auto; padding: 18px 14px 60px; }
 
@@ -460,6 +483,10 @@
         <input type="text" id="search-input" placeholder="Filter by uploader…" oninput="filterPhotos(this.value)">
         <span id="photo-count">0 photos</span>
       </div>
+      <div id="people-bar">
+        <div id="people-bar-title">People</div>
+        <div id="people-row"></div>
+      </div>
       <div id="face-filter-bar">
         <img id="face-filter-thumb" src="" alt="">
         <span id="face-filter-label">Showing photos with this person</span>
@@ -561,6 +588,7 @@
     function init() {
       document.getElementById('user-pill').textContent = myName;
       loadAllPhotos();
+      loadPeople();
       startPolling();
     }
 
@@ -696,6 +724,7 @@
         if (photo.id > maxKnownId) maxKnownId = photo.id;
         prependPhoto(photo);
         updatePhotoCount(); updateEmptyState();
+        setTimeout(loadPeople, 1500);   // refresh people bar after face detection runs
         resetUpload();          // go back to drop zone ready for next photo
       } catch (err) {
         document.getElementById('upload-error').textContent = 'Error: ' + err.message;
@@ -850,8 +879,45 @@
       faceFilterPhotoIds = null;
       faceFilterCropUrl  = null;
       document.getElementById('face-filter-bar').classList.remove('visible');
+      // Deactivate any selected person thumb
+      document.querySelectorAll('.person-thumb').forEach(t => t.classList.remove('active'));
       filterPhotos(document.getElementById('search-input').value);
       updatePhotoCount();
+    }
+
+    // ---- People bar ----
+    async function loadPeople() {
+      try {
+        const data = await (await fetch('/a/' + albumId + '/people')).json();
+        const row = document.getElementById('people-row');
+        const bar = document.getElementById('people-bar');
+        row.innerHTML = '';
+        if (!data.people || data.people.length === 0) {
+          bar.classList.remove('visible');
+          return;
+        }
+        data.people.forEach(p => {
+          const div = document.createElement('div');
+          div.className = 'person-thumb';
+          div.dataset.personId = p.id;
+          div.innerHTML = `<img src="${escapeHtml(p.cover_url)}" alt="person">
+                           <span class="person-count">${p.face_count}</span>`;
+          div.addEventListener('click', () => selectPerson(div, p));
+          row.appendChild(div);
+        });
+        bar.classList.add('visible');
+      } catch(e) { console.error(e); }
+    }
+
+    function selectPerson(thumbEl, person) {
+      const isActive = thumbEl.classList.contains('active');
+      document.querySelectorAll('.person-thumb').forEach(t => t.classList.remove('active'));
+      if (isActive) {
+        clearFaceFilter();
+        return;
+      }
+      thumbEl.classList.add('active');
+      applyFaceFilter(person.photo_ids, person.cover_url);
     }
 
     // ---- Find me (upload own photo) ----

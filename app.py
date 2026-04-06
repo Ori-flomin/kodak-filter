@@ -15,7 +15,9 @@ _REC_MODEL   = os.path.join(_BASE, 'w600k_mbf.onnx')   # ArcFace MobileNet
 
 _det_session = None
 _rec_session = None
-_EMB_BYTES   = 512 * 4    # 512-dim float32
+_EMB_BYTES        = 512 * 4   # 512-dim float32
+_ASSIGN_THRESHOLD = 0.55      # ArcFace: same person > 0.5, different < 0.3
+_SEARCH_THRESHOLD = 0.45      # slightly looser for query-time recall
 
 
 def _get_sessions():
@@ -200,6 +202,7 @@ def _arcface_embed(pil_img, kps):
     if rec_sess is None:
         return None
     aligned = _warp_face(pil_img, kps).astype(np.float32)  # BGR 112×112
+    aligned = aligned[:, :, ::-1]                          # BGR → RGB (w600k_mbf expects RGB)
     aligned = (aligned - 127.5) / 128.0
     blob    = aligned.transpose(2, 0, 1)[np.newaxis]
     emb     = rec_sess.run(None, {rec_sess.get_inputs()[0].name: blob})[0][0]
@@ -924,6 +927,8 @@ def _detect_faces(photo_id, album_id, filename, pil_img=None):
         url       = f'/static/albums/{album_id}/faces/{fname}'
         embedding = _arcface_embed(pil_img, kps)    # proper 5-pt aligned embed
         face_id   = db.add_face(photo_id, url, embedding=embedding)
+        if embedding is not None:
+            _assign_to_person(album_id, face_id, embedding)
         result.append({'id': face_id, 'crop_url': url})
 
     db.mark_faces_detected(photo_id)
@@ -945,20 +950,64 @@ def album_faces(album_id, photo_id):
     return jsonify({'faces': faces})
 
 
-def _search_embedding(q_emb, album_id, always_include_photo_id=None):
-    """Return set of photo_ids whose faces are similar to q_emb (ArcFace cosine)."""
-    all_faces = db.get_all_album_faces(album_id)
-    THRESHOLD = 0.40   # ArcFace cosine sim (with proper alignment): same ≈ 0.5–0.9, different < 0.3
+def _assign_to_person(album_id, face_id, emb_bytes):
+    """
+    Cluster a face into a person identity.
+    Compares the new embedding against every existing centroid in the album
+    (typically 10-50 persons, not thousands).
+    If the best cosine similarity >= ASSIGN_THRESHOLD the face is merged and the
+    centroid is updated as a running average then re-normalised.
+    Otherwise a new singleton cluster is created.
+    """
+    emb     = np.frombuffer(emb_bytes, dtype=np.float32)
+    persons = db.get_all_persons(album_id)
+
+    best_id  = None
+    best_sim = -1.0
+    best_p   = None
+    for p in persons:
+        raw = p['centroid']
+        if not raw or len(raw) != _EMB_BYTES:
+            continue
+        centroid = np.frombuffer(bytes(raw), dtype=np.float32)
+        sim = float(np.dot(emb, centroid))
+        if sim > best_sim:
+            best_sim = sim
+            best_id  = p['id']
+            best_p   = p
+
+    if best_id is not None and best_sim >= _ASSIGN_THRESHOLD:
+        # running_average(old_centroid, old_count, new_embedding)
+        old_centroid = np.frombuffer(bytes(best_p['centroid']), dtype=np.float32)
+        n            = best_p['face_count']
+        combined     = old_centroid * n + emb
+        combined     = combined / (n + 1)
+        norm         = np.linalg.norm(combined)
+        if norm > 1e-6:
+            combined = combined / norm
+        db.update_person(best_id, combined.astype(np.float32).tobytes(), n + 1)
+        db.assign_face_person(face_id, best_id)
+    else:
+        person_id = db.create_person(album_id, emb_bytes)
+        db.assign_face_person(face_id, person_id)
+
+
+def _search_by_centroid(q_emb, album_id, always_include_photo_id=None):
+    """
+    Compare query embedding against person centroids (not individual faces).
+    Returns the union of photo_ids from all matching clusters.
+    """
+    persons = db.get_all_persons(album_id)
     matched = set()
     if always_include_photo_id is not None:
         matched.add(always_include_photo_id)
-    for face in all_faces:
-        raw = face['embedding']
+    for p in persons:
+        raw = p['centroid']
         if not raw or len(raw) != _EMB_BYTES:
             continue
-        emb = np.frombuffer(bytes(raw), dtype=np.float32)
-        if float(np.dot(q_emb, emb)) >= THRESHOLD:
-            matched.add(face['photo_id'])
+        centroid = np.frombuffer(bytes(raw), dtype=np.float32)
+        if float(np.dot(q_emb, centroid)) >= _SEARCH_THRESHOLD:
+            matched.update(db.get_photos_for_person(p['id']))
     return matched
 
 
@@ -971,8 +1020,8 @@ def search_by_face(album_id, face_id):
         return jsonify({'crop_url': None, 'photo_ids': []})
 
     q_emb   = np.frombuffer(bytes(query_face['embedding']), dtype=np.float32)
-    matched = _search_embedding(q_emb, album_id,
-                                always_include_photo_id=query_face['photo_id'])
+    matched = _search_by_centroid(q_emb, album_id,
+                                  always_include_photo_id=query_face['photo_id'])
     return jsonify({
         'crop_url':  query_face['crop_url'],
         'photo_ids': list(matched),
@@ -1004,7 +1053,7 @@ def search_by_uploaded_face(album_id):
     if emb is None:
         return jsonify({'error': 'Could not compute face embedding'}), 500
     q_emb   = np.frombuffer(emb, dtype=np.float32)
-    matched = _search_embedding(q_emb, album_id)
+    matched = _search_by_centroid(q_emb, album_id)
 
     # Return the crop as a data URL so the browser can show it in the filter bar
     import base64
@@ -1016,6 +1065,25 @@ def search_by_uploaded_face(album_id):
         'crop_data_url': crop_data_url,
         'photo_ids':     list(matched),
     })
+
+
+@app.route('/a/<album_id>/people')
+def album_people(album_id):
+    """Return person clusters with 2+ faces — used to populate the People bar."""
+    if db.get_album(album_id) is None:
+        abort(404)
+    persons = db.get_all_persons(album_id)
+    result = []
+    for p in persons:
+        if p['face_count'] < 2:
+            continue
+        result.append({
+            'id':         p['id'],
+            'cover_url':  p['cover_url'],
+            'face_count': p['face_count'],
+            'photo_ids':  db.get_photos_for_person(p['id']),
+        })
+    return jsonify({'people': result})
 
 
 @app.route('/a/<album_id>/delete/<int:photo_id>', methods=['POST'])
