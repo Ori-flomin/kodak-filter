@@ -707,6 +707,7 @@ def add_film_border(img):
 # ---------------------------------------------------------------------------
 
 STYLES = {
+    'original':    (lambda img: img.convert('RGB'), 'original.jpg'),
     'kodak-gold':  (apply_kodak_gold,  'kodak_gold.jpg'),
     'trix-bw':     (apply_trix_bw,     'trix_bw.jpg'),
     'vintage-70s': (apply_vintage_70s, 'vintage_70s.jpg'),
@@ -717,6 +718,7 @@ STYLES = {
 }
 
 STYLE_NAMES = {
+    'original':    'Original',
     'kodak-gold':  'Kodak Gold',
     'trix-bw':     'Tri-X B&W',
     'vintage-70s': 'Vintage 70s',
@@ -730,6 +732,9 @@ STYLE_NAMES = {
 def apply_filter(img, style='kodak-gold', intensity=100,
                  light_leak=False, date_stamp=False, film_border=False):
     original = img.convert('RGB')
+    if style == 'original':
+        return original
+
     fn, _ = STYLES.get(style, STYLES['kodak-gold'])
     result = fn(img)
 

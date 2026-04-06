@@ -177,6 +177,7 @@
     .style-card.selected { border-color: #f5d000; }
     .style-card:hover { border-color: #e0bf00; }
     .swatch { height: 38px; width: 100%; display: block; }
+    .swatch-original    { background: linear-gradient(135deg,#e8e0d8,#f5f2ee,#e8e0d8); }
     .swatch-kodak-gold  { background: linear-gradient(135deg,#c47a2a,#e8c97a,#f5ead0); }
     .swatch-trix-bw     { background: linear-gradient(135deg,#111,#666,#ddd); }
     .swatch-vintage-70s { background: linear-gradient(135deg,#b85a10,#d4925a,#e8d0a0); }
@@ -412,6 +413,10 @@
 
       <!-- Style picker -->
       <div id="style-scroller">
+        <div class="style-card" data-style="original">
+          <span class="swatch swatch-original"></span>
+          <div class="style-card-name">Original</div>
+        </div>
         <div class="style-card selected" data-style="kodak-gold">
           <span class="swatch swatch-kodak-gold"></span>
           <div class="style-card-name">Kodak Gold</div>
@@ -560,6 +565,9 @@
           document.querySelectorAll('.style-card').forEach(c => c.classList.remove('selected'));
           card.classList.add('selected');
           selectedStyle = card.dataset.style;
+          const isOriginal = selectedStyle === 'original';
+          document.getElementById('opts-row').style.display      = isOriginal ? 'none' : '';
+          document.getElementById('intensity-wrap').style.display = isOriginal ? 'none' : '';
           triggerPreview();
         });
       });
