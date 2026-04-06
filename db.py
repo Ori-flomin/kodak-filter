@@ -62,6 +62,16 @@ def init():
             )
         ''')
         conn.commit()
+        # Indexes for hot queries
+        for idx in [
+            'CREATE INDEX IF NOT EXISTS idx_photos_album  ON photos(album_id)',
+            'CREATE INDEX IF NOT EXISTS idx_photos_id     ON photos(album_id, id)',
+            'CREATE INDEX IF NOT EXISTS idx_faces_photo   ON faces(photo_id)',
+            'CREATE INDEX IF NOT EXISTS idx_faces_person  ON faces(person_id)',
+            'CREATE INDEX IF NOT EXISTS idx_tags_photo    ON tags(photo_id)',
+        ]:
+            conn.execute(idx)
+        conn.commit()
         # Migrations for existing DBs that predate these columns
         for stmt in [
             'ALTER TABLE photos  ADD COLUMN faces_detected INTEGER NOT NULL DEFAULT 0',
@@ -141,6 +151,7 @@ def get_photos(album_id, since_id=0):
                 'uploaded_at': row['uploaded_at'],
                 'tags':        [t['name'] for t in tag_rows],
                 'url':         f'/static/albums/{row["album_id"]}/{row["filename"]}',
+                'thumb_url':   f'/static/albums/{row["album_id"]}/thumbs/{row["filename"]}',
             })
         return result
     finally:

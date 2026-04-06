@@ -775,10 +775,11 @@
       el.className = 'photo-card';
       el.dataset.photoId  = photo.id;
       el.dataset.uploader = photo.uploaded_by;
-      const styleName = STYLE_NAMES[photo.style] || photo.style;
+      const styleName  = STYLE_NAMES[photo.style] || photo.style;
+      const thumbSrc   = photo.thumb_url || photo.url;   // fallback for old photos without thumb
       el.innerHTML = `
         <div class="photo-img-wrap" onclick="openLightbox('${escapeHtml(photo.url)}')">
-          <img src="${escapeHtml(photo.url)}" alt="${escapeHtml(styleName)}" loading="lazy">
+          <img src="${escapeHtml(thumbSrc)}" alt="${escapeHtml(styleName)}" loading="lazy">
           <div class="photo-overlay">
             <span class="style-badge">${escapeHtml(styleName)}</span>
             <div class="photo-uploader-time">
@@ -790,6 +791,7 @@
         <div class="photo-meta">
           <div class="tags-row">
             <button class="tag-faces-btn" onclick="openFaceModal(${photo.id})">&#128100; Faces</button>
+            <a class="tag-pill" href="${escapeHtml(photo.url)}" download style="text-decoration:none">&#8595; Save</a>
           </div>
         </div>`;
       return el;

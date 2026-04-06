@@ -244,11 +244,41 @@ def _face_crop(pil_img, bbox, kps, size=88):
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+limiter = Limiter(get_remote_address, app=app, default_limits=[],
+                  storage_uri='memory://')
+
 ALBUM_DIR = os.path.join(os.path.dirname(__file__), 'static', 'album')
 os.makedirs(ALBUM_DIR, exist_ok=True)
 
 ALBUMS_DIR = os.path.join(os.path.dirname(__file__), 'static', 'albums')
 os.makedirs(ALBUMS_DIR, exist_ok=True)
+
+# Magic bytes for allowed image types
+_ALLOWED_MAGIC = (
+    b'\xff\xd8\xff',        # JPEG
+    b'\x89PNG\r\n\x1a\n',  # PNG
+    b'RIFF',                # WebP (4-byte prefix; full check below)
+    b'GIF87a', b'GIF89a',  # GIF
+)
+
+def _validate_image_bytes(data: bytes) -> bool:
+    """Quick magic-byte check before handing data to Pillow."""
+    for magic in _ALLOWED_MAGIC:
+        if data[:len(magic)] == magic:
+            if magic == b'RIFF':
+                return data[8:12] == b'WEBP'
+            return True
+    return False
+
+
+def _make_thumbnail(img: 'Image.Image', max_w: int = 900) -> 'Image.Image':
+    """Downscale to max_w wide (preserving ratio). No-op if already smaller."""
+    w, h = img.size
+    if w <= max_w:
+        return img.copy()
+    return img.resize((max_w, int(h * max_w / w)), Image.LANCZOS)
 
 db.init()
 
@@ -848,6 +878,7 @@ def album_exists(album_id):
 
 
 @app.route('/a/<album_id>/upload', methods=['POST'])
+@limiter.limit('20 per minute')
 def album_upload(album_id):
     album_row = db.get_album(album_id)
     if album_row is None:
@@ -859,6 +890,10 @@ def album_upload(album_id):
     if file.filename == '':
         return jsonify({'error': 'No file selected'}), 400
 
+    raw = file.read()
+    if not _validate_image_bytes(raw):
+        return jsonify({'error': 'Invalid image format'}), 400
+
     style = request.form.get('style', 'kodak-gold')
     if style not in STYLES:
         return jsonify({'error': 'Unknown style'}), 400
@@ -869,7 +904,7 @@ def album_upload(album_id):
     date_stamp   = request.form.get('date_stamp', '0') == '1'
     film_border  = request.form.get('film_border', '0') == '1'
 
-    original = Image.open(BytesIO(file.read())).convert('RGB')
+    original = Image.open(BytesIO(raw)).convert('RGB')
     result   = apply_filter(original, style, intensity=intensity,
                             light_leak=light_leak, date_stamp=date_stamp,
                             film_border=film_border)
@@ -878,8 +913,15 @@ def album_upload(album_id):
     filename = f'{ts}_{style}.jpg'
 
     album_photo_dir = os.path.join(ALBUMS_DIR, album_id)
+    thumbs_dir      = os.path.join(album_photo_dir, 'thumbs')
     os.makedirs(album_photo_dir, exist_ok=True)
+    os.makedirs(thumbs_dir,      exist_ok=True)
+
     result.save(os.path.join(album_photo_dir, filename), format='JPEG', quality=92)
+
+    # Thumbnail for gallery (phones serve full-res; grid only needs ~900px)
+    _make_thumbnail(result, max_w=900).save(
+        os.path.join(thumbs_dir, filename), format='JPEG', quality=82)
 
     uploaded_at = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
     photo_id    = db.add_photo(album_id, filename, style, uploaded_by, uploaded_at)
@@ -888,9 +930,11 @@ def album_upload(album_id):
     _detect_faces(photo_id, album_id, filename, pil_img=original)
 
     photo_url = f'/static/albums/{album_id}/{filename}'
+    thumb_url = f'/static/albums/{album_id}/thumbs/{filename}'
     return jsonify({
         'id':          photo_id,
         'url':         photo_url,
+        'thumb_url':   thumb_url,
         'filename':    filename,
         'style':       style,
         'uploaded_by': uploaded_by,
