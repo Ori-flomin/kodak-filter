@@ -136,7 +136,7 @@
     }
     .person-thumb {
       display: flex; flex-direction: column; align-items: center; gap: 4px;
-      cursor: pointer; flex-shrink: 0;
+      cursor: pointer; flex-shrink: 0; position: relative;
     }
     .person-thumb img {
       width: 52px; height: 52px; border-radius: 50%; object-fit: cover;
@@ -145,6 +145,13 @@
     .person-thumb.active img { border-color: #f5d000; }
     .person-thumb:hover img  { border-color: #c8a800; }
     .person-count { font-size: 0.65rem; color: #9a8a70; }
+    .maybe-badge {
+      position: absolute; top: 0; right: 0;
+      background: #f0a000; color: #fff; font-size: 0.6rem; font-weight: 700;
+      border-radius: 50%; width: 16px; height: 16px;
+      display: flex; align-items: center; justify-content: center;
+      border: 1.5px solid #fff; pointer-events: none;
+    }
 
     /* ---- Main layout ---- */
     #main-content { max-width: 1100px; margin: 0 auto; padding: 18px 14px 60px; }
@@ -900,7 +907,11 @@
           const div = document.createElement('div');
           div.className = 'person-thumb';
           div.dataset.personId = p.id;
+          const maybeBadge = p.maybe_count > 0
+            ? `<span class="maybe-badge" title="${p.maybe_count} uncertain match${p.maybe_count > 1 ? 'es' : ''}">?</span>`
+            : '';
           div.innerHTML = `<img src="${escapeHtml(p.cover_url)}" alt="person">
+                           ${maybeBadge}
                            <span class="person-count">${p.face_count}</span>`;
           div.addEventListener('click', () => selectPerson(div, p));
           row.appendChild(div);

@@ -17,6 +17,7 @@ _det_session = None
 _rec_session = None
 _EMB_BYTES        = 512 * 4   # 512-dim float32
 _ASSIGN_THRESHOLD = 0.55      # ArcFace: same person > 0.5, different < 0.3
+_MAYBE_THRESHOLD  = 0.42      # [_MAYBE_THRESHOLD, _ASSIGN_THRESHOLD) = uncertain
 _SEARCH_THRESHOLD = 0.45      # slightly looser for query-time recall
 
 
@@ -137,6 +138,17 @@ def _scrfd_postprocess(outputs, scale, pad, orig_size, conf_thresh=0.45, nms_thr
     return results
 
 
+def _is_quality_face(bbox, kps):
+    """Return False for faces that are too small or near-profile (unreliable embedding)."""
+    x1, y1, x2, y2 = bbox
+    if (x2 - x1) < 40 or (y2 - y1) < 40:
+        return False
+    le, re = np.array(kps[0]), np.array(kps[1])
+    if np.linalg.norm(re - le) < 15:   # eyes too close = extreme profile
+        return False
+    return True
+
+
 def _detect_faces_in_img(pil_img):
     """Run SCRFD → return list of ((x1,y1,x2,y2), kps) in original image coords."""
     det_sess, _ = _get_sessions()
@@ -195,18 +207,21 @@ def _warp_face(pil_img, kps, out=112):
 
 def _arcface_embed(pil_img, kps):
     """
-    Return 512-dim ArcFace unit-embedding (bytes).
-    Uses proper 5-point alignment to the ArcFace canonical template.
+    Return 512-dim ArcFace unit-embedding (bytes) with TTA (original + horizontal flip).
+    Averaging the two embeddings reduces sensitivity to left/right asymmetry.
     """
     _, rec_sess = _get_sessions()
     if rec_sess is None:
         return None
     aligned = _warp_face(pil_img, kps).astype(np.float32)  # BGR 112×112
-    aligned = aligned[:, :, ::-1]                          # BGR → RGB (w600k_mbf expects RGB)
+    aligned = aligned[:, :, ::-1]                           # BGR → RGB (w600k_mbf expects RGB)
     aligned = (aligned - 127.5) / 128.0
     blob    = aligned.transpose(2, 0, 1)[np.newaxis]
-    emb     = rec_sess.run(None, {rec_sess.get_inputs()[0].name: blob})[0][0]
-    emb     = emb / (np.linalg.norm(emb) + 1e-6)
+    flipped = blob[:, :, :, ::-1]                           # horizontal flip TTA
+    emb1 = rec_sess.run(None, {rec_sess.get_inputs()[0].name: blob   })[0][0]
+    emb2 = rec_sess.run(None, {rec_sess.get_inputs()[0].name: flipped})[0][0]
+    emb  = emb1 + emb2
+    emb  = emb / (np.linalg.norm(emb) + 1e-6)
     return emb.astype(np.float32).tobytes()
 
 
@@ -921,11 +936,13 @@ def _detect_faces(photo_id, album_id, filename, pil_img=None):
 
     result = []
     for i, (bbox, kps) in enumerate(detections):
+        if not _is_quality_face(bbox, kps):
+            continue
         crop      = _face_crop(pil_img, bbox, kps, size=88)
         fname     = f'face_{photo_id}_{i}.jpg'
         crop.save(os.path.join(faces_dir, fname), 'JPEG', quality=85)
         url       = f'/static/albums/{album_id}/faces/{fname}'
-        embedding = _arcface_embed(pil_img, kps)    # proper 5-pt aligned embed
+        embedding = _arcface_embed(pil_img, kps)
         face_id   = db.add_face(photo_id, url, embedding=embedding)
         if embedding is not None:
             _assign_to_person(album_id, face_id, embedding)
@@ -977,7 +994,7 @@ def _assign_to_person(album_id, face_id, emb_bytes):
             best_p   = p
 
     if best_id is not None and best_sim >= _ASSIGN_THRESHOLD:
-        # running_average(old_centroid, old_count, new_embedding)
+        # Confident match: merge into cluster and update running centroid
         old_centroid = np.frombuffer(bytes(best_p['centroid']), dtype=np.float32)
         n            = best_p['face_count']
         combined     = old_centroid * n + emb
@@ -986,10 +1003,14 @@ def _assign_to_person(album_id, face_id, emb_bytes):
         if norm > 1e-6:
             combined = combined / norm
         db.update_person(best_id, combined.astype(np.float32).tobytes(), n + 1)
-        db.assign_face_person(face_id, best_id)
+        db.assign_face_person(face_id, best_id, confidence='confirmed')
+    elif best_id is not None and best_sim >= _MAYBE_THRESHOLD:
+        # Uncertain match: assign tentatively but don't skew centroid
+        db.assign_face_person(face_id, best_id, confidence='maybe')
     else:
+        # No match: create new singleton cluster
         person_id = db.create_person(album_id, emb_bytes)
-        db.assign_face_person(face_id, person_id)
+        db.assign_face_person(face_id, person_id, confidence='confirmed')
 
 
 def _search_by_centroid(q_emb, album_id, always_include_photo_id=None):
@@ -1075,13 +1096,17 @@ def album_people(album_id):
     persons = db.get_all_persons(album_id)
     result = []
     for p in persons:
-        if p['face_count'] < 2:
+        confirmed = db.get_photos_for_person(p['id'], confidence='confirmed')
+        maybe     = db.get_photos_for_person(p['id'], confidence='maybe')
+        total_photos = list(set(confirmed) | set(maybe))
+        if len(total_photos) < 2:
             continue
         result.append({
-            'id':         p['id'],
-            'cover_url':  p['cover_url'],
-            'face_count': p['face_count'],
-            'photo_ids':  db.get_photos_for_person(p['id']),
+            'id':          p['id'],
+            'cover_url':   p['cover_url'],
+            'face_count':  p['face_count'],
+            'maybe_count': len(maybe),
+            'photo_ids':   total_photos,
         })
     return jsonify({'people': result})
 

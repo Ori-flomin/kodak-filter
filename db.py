@@ -44,11 +44,12 @@ def init():
         ''')
         conn.execute('''
             CREATE TABLE IF NOT EXISTS faces (
-                id        INTEGER PRIMARY KEY AUTOINCREMENT,
-                photo_id  INTEGER NOT NULL,
-                crop_url  TEXT    NOT NULL,
-                embedding BLOB,
-                person_id INTEGER
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                photo_id          INTEGER NOT NULL,
+                crop_url          TEXT    NOT NULL,
+                embedding         BLOB,
+                person_id         INTEGER,
+                match_confidence  TEXT
             )
         ''')
         conn.execute('''
@@ -67,6 +68,7 @@ def init():
             'ALTER TABLE tags    ADD COLUMN face_id INTEGER',
             'ALTER TABLE faces   ADD COLUMN embedding BLOB',
             'ALTER TABLE faces   ADD COLUMN person_id INTEGER',
+            'ALTER TABLE faces   ADD COLUMN match_confidence TEXT',
             'ALTER TABLE people  ADD COLUMN name TEXT',
         ]:
             try:
@@ -329,23 +331,35 @@ def update_person(person_id, new_centroid, new_face_count):
         conn.close()
 
 
-def assign_face_person(face_id, person_id):
-    """Link a face row to a person cluster."""
+def assign_face_person(face_id, person_id, confidence='confirmed'):
+    """Link a face row to a person cluster, storing match confidence."""
     conn = _connect()
     try:
-        conn.execute('UPDATE faces SET person_id=? WHERE id=?', (person_id, face_id))
+        conn.execute(
+            'UPDATE faces SET person_id=?, match_confidence=? WHERE id=?',
+            (person_id, confidence, face_id)
+        )
         conn.commit()
     finally:
         conn.close()
 
 
-def get_photos_for_person(person_id):
-    """Return distinct photo_ids for all faces assigned to this person."""
+def get_photos_for_person(person_id, confidence=None):
+    """
+    Return distinct photo_ids for all faces assigned to this person.
+    Pass confidence='confirmed' or 'maybe' to filter by match quality.
+    """
     conn = _connect()
     try:
-        rows = conn.execute(
-            'SELECT DISTINCT photo_id FROM faces WHERE person_id=?', (person_id,)
-        ).fetchall()
+        if confidence is not None:
+            rows = conn.execute(
+                'SELECT DISTINCT photo_id FROM faces WHERE person_id=? AND match_confidence=?',
+                (person_id, confidence)
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                'SELECT DISTINCT photo_id FROM faces WHERE person_id=?', (person_id,)
+            ).fetchall()
         return [r['photo_id'] for r in rows]
     finally:
         conn.close()
