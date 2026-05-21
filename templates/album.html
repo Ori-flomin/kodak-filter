@@ -2,181 +2,536 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Film Filter">
+  <meta name="theme-color" content="#1a1208">
   <title>{{ album.name }} — Film Filter</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+    :root {
+      --yellow: #f5c518;
+      --yellow-dark: #d4a800;
+      --yellow-glow: rgba(245,197,24,0.18);
+      --dark: #1a1208;
+      --dark2: #2e2010;
+      --cream: #f4efe6;
+      --card: #fefcf8;
+      --muted: #8a7a64;
+      --border: #e2d8c8;
+      --red: #c0392b;
+      --header-h: 54px;
+    }
+
+    html { height: 100%; }
+
     body {
-      font-family: 'Georgia', serif;
-      background: #f5f0e8;
-      color: #2a2014;
-      min-height: 100vh;
-      padding-top: 52px;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(245,197,24,0.18), transparent 28%),
+        linear-gradient(180deg, #f8f3e8 0%, #f2ebdd 38%, #efe5d6 100%);
+      color: var(--dark);
+      min-height: 100%;
+      padding-top: var(--header-h);
+      padding-bottom: max(20px, env(safe-area-inset-bottom));
+      position: relative;
+      overflow-x: hidden;
     }
 
-    /* ---- Fixed header ---- */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.045'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    body > * { position: relative; z-index: 1; }
+
+    /* ======== Fixed header ======== */
     #app-header {
-      position: fixed; top: 0; left: 0; right: 0; height: 52px;
-      background: #2a2014; color: #f5d000;
+      position: fixed; top: 0; left: 0; right: 0;
+      height: var(--header-h);
+      padding-top: env(safe-area-inset-top);
+      background: var(--dark);
       display: flex; align-items: center; justify-content: space-between;
-      padding: 0 16px; z-index: 100; gap: 10px;
+      padding-left: 16px; padding-right: 16px;
+      z-index: 100;
+      gap: 10px;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.06);
     }
-    #header-album-name {
-      font-size: 1rem; font-weight: bold; letter-spacing: 0.03em;
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-      flex: 1; min-width: 0;
-    }
-    #header-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-    #user-pill {
-      background: #4a3a24; color: #e8d8b0;
-      padding: 4px 11px; border-radius: 20px; font-size: 0.76rem;
-      max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
-    #share-btn {
-      background: #f5d000; color: #2a2014; border: none; border-radius: 20px;
-      padding: 5px 14px; font-family: 'Georgia', serif; font-size: 0.78rem;
-      font-weight: bold; cursor: pointer; letter-spacing: 0.04em;
-    }
-    #share-btn:hover { background: #e0bf00; }
 
-    /* ---- Modals ---- */
+    #header-left {
+      display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;
+    }
+
+    .header-logo {
+      width: 28px; height: 28px; flex-shrink: 0;
+      background: var(--yellow);
+      border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.75rem; font-weight: 700; color: var(--dark);
+      letter-spacing: -0.02em;
+    }
+
+    #header-album-name {
+      font-size: 0.9375rem; font-weight: 600; color: #fff;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+
+    #header-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+    #user-pill {
+      background: rgba(255,255,255,0.1);
+      color: #e8d8b0;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      max-width: 100px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+
+    #share-btn {
+      background: var(--yellow); color: var(--dark);
+      border: none; border-radius: 20px;
+      padding: 6px 14px;
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 0.8125rem; font-weight: 600;
+      cursor: pointer; letter-spacing: -0.01em;
+      transition: background 0.15s;
+    }
+    #share-btn:hover { background: var(--yellow-dark); }
+
+    /* ======== Modals ======== */
     .modal-overlay {
       display: none; position: fixed; inset: 0;
-      background: rgba(0,0,0,0.72); z-index: 200;
-      align-items: center; justify-content: center; padding: 20px;
+      background: rgba(0,0,0,0.75);
+      z-index: 200;
+      align-items: flex-end; justify-content: center;
+      padding: 0;
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
     }
     .modal-overlay.open { display: flex; }
+
+    /* Slide-up sheet style */
     .modal-card {
-      background: #fdfaf3; border-radius: 14px; padding: 28px 24px 24px;
-      width: 100%; max-width: 380px;
-      box-shadow: 0 8px 40px rgba(0,0,0,0.35); position: relative;
+      background: var(--card);
+      border-radius: 20px 20px 0 0;
+      padding: 28px 24px max(28px, env(safe-area-inset-bottom));
+      width: 100%;
+      max-width: 480px;
+      box-shadow: 0 -8px 40px rgba(0,0,0,0.25);
+      position: relative;
+      animation: slideUp 0.28s cubic-bezier(0.34,1.1,0.64,1);
     }
-    .modal-title { font-size: 1.15rem; font-weight: bold; margin-bottom: 5px; }
-    .modal-subtitle { font-size: 0.84rem; color: #7a6a50; margin-bottom: 16px; }
+
+    @keyframes slideUp {
+      from { transform: translateY(100%); opacity: 0; }
+      to   { transform: translateY(0);    opacity: 1; }
+    }
+
+    /* Pull handle */
+    .modal-card::before {
+      content: '';
+      display: block;
+      width: 36px; height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      margin: 0 auto 20px;
+    }
+
+    .modal-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; }
+    .modal-subtitle { font-size: 0.85rem; color: var(--muted); margin-bottom: 18px; }
+
     .modal-close {
-      position: absolute; top: 12px; right: 14px;
-      background: none; border: none; font-size: 1.4rem; color: #9a8a70; cursor: pointer;
+      position: absolute; top: 20px; right: 18px;
+      background: var(--cream); border: none;
+      width: 30px; height: 30px; border-radius: 50%;
+      font-size: 1.1rem; color: var(--muted); cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.15s;
     }
-    .modal-close:hover { color: #2a2014; }
+    .modal-close:hover { background: var(--border); color: var(--dark); }
+
     .modal-input {
-      width: 100%; padding: 10px 13px; border: 1.5px solid #e0d8c8;
-      border-radius: 8px; font-family: 'Georgia', serif; font-size: 0.92rem;
-      background: #fff; color: #2a2014; outline: none; margin-bottom: 12px;
+      width: 100%; padding: 12px 14px;
+      border: 1.5px solid var(--border); border-radius: 10px;
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 0.9375rem; background: #fff; color: var(--dark);
+      outline: none; margin-bottom: 14px;
+      transition: border-color 0.15s, box-shadow 0.15s;
     }
-    .modal-input:focus { border-color: #f5d000; }
+    .modal-input:focus { border-color: var(--yellow); box-shadow: 0 0 0 3px var(--yellow-glow); }
+
     .modal-btn {
-      width: 100%; padding: 11px; background: #f5d000; color: #2a2014; border: none;
-      border-radius: 8px; font-family: 'Georgia', serif; font-size: 0.94rem;
-      font-weight: bold; cursor: pointer;
+      width: 100%; padding: 13px;
+      background: var(--yellow); color: var(--dark);
+      border: none; border-radius: 10px;
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 0.9375rem; font-weight: 600; cursor: pointer;
+      transition: background 0.15s;
     }
-    .modal-btn:hover { background: #e0bf00; }
+    .modal-btn:hover { background: var(--yellow-dark); }
 
     /* Share modal */
     #share-code-display {
-      font-family: 'Courier New', monospace; font-size: 2rem; color: #f5d000;
-      background: #2a2014; text-align: center; padding: 14px 20px;
-      border-radius: 10px; letter-spacing: 0.25em; margin-bottom: 14px;
+      font-family: 'Inter', monospace;
+      font-size: 2.25rem; font-weight: 700;
+      letter-spacing: 0.2em;
+      color: var(--yellow);
+      background: var(--dark);
+      text-align: center;
+      padding: 16px 20px;
+      border-radius: 12px;
+      margin-bottom: 14px;
     }
-    #share-qr { display: block; margin: 0 auto 12px; border-radius: 8px; width: 190px; height: 190px; object-fit: contain; }
+    #share-qr {
+      display: block; margin: 0 auto 14px;
+      border-radius: 10px; width: 180px; height: 180px;
+      object-fit: contain; border: 6px solid #fff;
+    }
     #copy-link-btn {
-      width: 100%; padding: 9px; background: #2a2014; color: #f5d000; border: none;
-      border-radius: 8px; font-family: 'Georgia', serif; font-size: 0.86rem;
-      font-weight: bold; cursor: pointer; margin-bottom: 6px;
+      width: 100%; padding: 11px;
+      background: var(--dark2); color: var(--yellow);
+      border: none; border-radius: 10px;
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 0.875rem; font-weight: 600; cursor: pointer;
+      margin-bottom: 8px; transition: background 0.15s;
     }
     #copy-link-btn:hover { background: #3d3020; }
-    .share-hint { text-align: center; font-size: 0.76rem; color: #9a8a70; font-style: italic; }
+    .share-hint { text-align: center; font-size: 0.78rem; color: var(--muted); }
+
+    /* Find me modal */
+    #find-me-modal .modal-card { max-width: 520px; }
+    .find-me-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 16px;
+    }
+    .find-me-upload-btn {
+      width: 100%;
+      padding: 12px 14px;
+      background: var(--dark);
+      color: var(--yellow);
+      border: none;
+      border-radius: 10px;
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .find-me-upload-btn:hover { background: var(--dark2); }
+    #find-me-status {
+      font-size: 0.82rem;
+      color: var(--muted);
+      text-align: center;
+      padding: 8px 0 2px;
+    }
+    #find-me-status.error { color: var(--red); }
+    #find-me-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+      gap: 14px;
+      margin-top: 8px;
+      max-height: 44vh;
+      overflow-y: auto;
+    }
+    .find-me-person {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 10px 8px;
+      text-align: center;
+      cursor: pointer;
+      transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s;
+    }
+    .find-me-person:hover {
+      transform: translateY(-1px);
+      border-color: var(--yellow-dark);
+      box-shadow: 0 8px 20px rgba(40, 28, 8, 0.08);
+    }
+    .find-me-person img {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid var(--border);
+      display: block;
+      margin: 0 auto 8px;
+    }
+    .find-me-person-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--dark);
+      margin-bottom: 3px;
+    }
+    .find-me-person-meta {
+      font-size: 0.68rem;
+      color: var(--muted);
+      line-height: 1.3;
+    }
 
     /* Face modal */
     #face-modal .modal-card { max-width: 480px; }
-    #face-modal-status { text-align: center; padding: 18px; color: #7a6a50; font-size: 0.86rem; font-style: italic; }
+    #face-modal-status {
+      text-align: center; padding: 20px;
+      color: var(--muted); font-size: 0.875rem;
+    }
     #face-grid {
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(106px, 1fr));
-      gap: 12px; margin-top: 14px; max-height: 60vh; overflow-y: auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+      gap: 14px; margin-top: 14px;
+      max-height: 55vh; overflow-y: auto;
     }
     .face-card { text-align: center; }
     .face-thumb {
-      width: 80px; height: 80px; object-fit: cover; border-radius: 50%;
-      border: 2.5px solid #e0d8c8; display: block; margin: 0 auto 5px;
-      transition: border-color 0.15s, transform 0.15s; cursor: pointer;
+      width: 72px; height: 72px; object-fit: cover;
+      border-radius: 50%;
+      border: 2.5px solid var(--border);
+      display: block; margin: 0 auto 5px;
+      transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+      cursor: pointer;
     }
-    .face-thumb:hover { border-color: #f5d000; transform: scale(1.07); }
-    .face-card.active .face-thumb { border-color: #f5d000; box-shadow: 0 0 0 3px #fdf3c0; }
-    .face-hint { font-size: 0.67rem; color: #9a8a70; text-align: center; margin-top: 3px; }
+    .face-thumb:hover { border-color: var(--yellow); transform: scale(1.06); }
+    .face-card.active .face-thumb {
+      border-color: var(--yellow);
+      box-shadow: 0 0 0 3px var(--yellow-glow);
+    }
+    .face-hint { font-size: 0.68rem; color: var(--muted); }
 
     /* Face filter bar */
     #face-filter-bar {
-      display: none; align-items: center; gap: 10px; padding: 8px 13px;
-      background: #fdf3c0; border: 1.5px solid #f5d000; border-radius: 8px;
-      margin-bottom: 11px;
+      display: none; align-items: center; gap: 10px;
+      padding: 10px 14px;
+      background: #fdf5c0;
+      border: 1.5px solid var(--yellow);
+      border-radius: 10px; margin-bottom: 12px;
     }
     #face-filter-bar.visible { display: flex; }
     #face-filter-thumb {
-      width: 34px; height: 34px; border-radius: 50%; object-fit: cover;
-      border: 2px solid #f5d000; flex-shrink: 0;
+      width: 36px; height: 36px; border-radius: 50%; object-fit: cover;
+      border: 2px solid var(--yellow); flex-shrink: 0;
     }
-    #face-filter-label { flex: 1; font-size: 0.78rem; color: #4a3a24; }
+    #face-filter-label { flex: 1; font-size: 0.8rem; font-weight: 500; color: #4a3a24; }
     #face-filter-clear {
-      background: none; border: 1px solid #c8a800; color: #c8a800;
-      border-radius: 6px; padding: 3px 9px; font-size: 0.73rem; cursor: pointer;
-      font-family: 'Georgia', serif;
+      background: none; border: 1.5px solid var(--yellow-dark); color: var(--yellow-dark);
+      border-radius: 6px; padding: 4px 10px; font-size: 0.75rem; font-weight: 600;
+      cursor: pointer; font-family: 'Inter', system-ui, sans-serif;
+      transition: background 0.12s;
     }
-    #face-filter-clear:hover { background: #fff3c0; }
+    #face-filter-clear:hover { background: #fdf3c0; }
 
     /* People bar */
     #people-bar {
-      display: none; flex-direction: column; gap: 8px;
-      background: #fdfaf3; border-radius: 10px; padding: 10px 14px 12px;
-      margin-bottom: 14px; box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+      display: none; flex-direction: column; gap: 10px;
+      background: var(--card);
+      border-radius: 12px; padding: 12px 14px;
+      margin-bottom: 14px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+      border: 1px solid var(--border);
     }
     #people-bar.visible { display: flex; }
-    #people-bar-title { font-size: 0.74rem; color: #7a6a50; letter-spacing: 0.05em; text-transform: uppercase; }
-    #people-row {
-      display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start;
+    #people-bar-title {
+      font-size: 0.72rem; font-weight: 600;
+      color: var(--muted); letter-spacing: 0.06em;
+      text-transform: uppercase;
     }
+    #people-row { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-start; overflow-x: auto; }
     .person-thumb {
       display: flex; flex-direction: column; align-items: center; gap: 4px;
-      cursor: pointer; flex-shrink: 0; position: relative;
+      cursor: pointer; flex-shrink: 0; position: relative; max-width: 74px;
     }
     .person-thumb img {
-      width: 52px; height: 52px; border-radius: 50%; object-fit: cover;
-      border: 2.5px solid #e0d8c8; transition: border-color 0.15s;
+      width: 54px; height: 54px; border-radius: 50%; object-fit: cover;
+      border: 2.5px solid var(--border);
+      transition: border-color 0.15s, transform 0.1s;
     }
-    .person-thumb.active img { border-color: #f5d000; }
-    .person-thumb:hover img  { border-color: #c8a800; }
-    .person-count { font-size: 0.65rem; color: #9a8a70; }
+    .person-thumb.active img { border-color: var(--yellow); box-shadow: 0 0 0 3px var(--yellow-glow); }
+    .person-thumb:hover img  { border-color: var(--yellow-dark); transform: scale(1.05); }
+    .person-count { font-size: 0.67rem; color: var(--muted); font-weight: 500; text-align: center; }
     .maybe-badge {
       position: absolute; top: 0; right: 0;
-      background: #f0a000; color: #fff; font-size: 0.6rem; font-weight: 700;
+      background: #f0a000; color: #fff;
+      font-size: 0.6rem; font-weight: 700;
       border-radius: 50%; width: 16px; height: 16px;
       display: flex; align-items: center; justify-content: center;
       border: 1.5px solid #fff; pointer-events: none;
     }
 
-    /* ---- Main layout ---- */
-    #main-content { max-width: 1100px; margin: 0 auto; padding: 18px 14px 60px; }
+    /* ======== Main layout ======== */
+    #main-content { max-width: 1160px; margin: 0 auto; padding: 20px 14px 44px; }
 
-    /* ---- Upload section ---- */
+    #album-hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.6fr) minmax(260px, 0.8fr);
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .hero-panel,
+    .hero-side {
+      background: linear-gradient(135deg, rgba(26,18,8,0.96), rgba(46,32,16,0.92));
+      color: #fff9ef;
+      border-radius: 22px;
+      overflow: hidden;
+      box-shadow: 0 16px 44px rgba(40, 28, 8, 0.18);
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .hero-panel {
+      padding: 24px 22px;
+      background:
+        radial-gradient(circle at top right, rgba(245,197,24,0.22), transparent 34%),
+        linear-gradient(135deg, rgba(26,18,8,0.96), rgba(46,32,16,0.92));
+    }
+
+    .hero-kicker {
+      font-size: 0.74rem;
+      font-weight: 700;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: #e5ca84;
+      margin-bottom: 10px;
+    }
+
+    .hero-title {
+      font-size: clamp(1.6rem, 2.4vw, 2.6rem);
+      line-height: 1;
+      letter-spacing: -0.04em;
+      margin-bottom: 12px;
+    }
+
+    .hero-copy {
+      max-width: 46ch;
+      color: rgba(255,249,239,0.78);
+      font-size: 0.95rem;
+      line-height: 1.55;
+      margin-bottom: 18px;
+    }
+
+    .hero-stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .hero-stat {
+      min-width: 110px;
+      padding: 12px 14px;
+      border-radius: 16px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.08);
+      backdrop-filter: blur(10px);
+    }
+
+    .hero-stat strong {
+      display: block;
+      font-size: 1.2rem;
+      letter-spacing: -0.03em;
+      color: #fff;
+    }
+
+    .hero-stat span {
+      font-size: 0.74rem;
+      color: rgba(255,249,239,0.72);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .hero-side {
+      padding: 20px 18px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 14px;
+    }
+
+    .hero-side-card {
+      padding: 14px 16px;
+      border-radius: 16px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.07);
+    }
+
+    .hero-side-card strong {
+      display: block;
+      font-size: 0.92rem;
+      margin-bottom: 5px;
+      color: #fff;
+    }
+
+    .hero-side-card p {
+      font-size: 0.82rem;
+      line-height: 1.5;
+      color: rgba(255,249,239,0.72);
+    }
+
+    /* ======== Upload section ======== */
     #upload-section {
-      background: #fdfaf3; border-radius: 12px; padding: 16px 16px 14px;
-      margin-bottom: 20px; box-shadow: 0 1px 8px rgba(0,0,0,0.07);
+      background: rgba(254,252,248,0.9);
+      border-radius: 20px; padding: 18px;
+      margin-bottom: 18px;
+      box-shadow: 0 10px 34px rgba(51, 39, 17, 0.08);
+      border: 1px solid rgba(226, 216, 200, 0.9);
+      backdrop-filter: blur(12px);
+    }
+
+    .section-head {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .section-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .section-copy {
+      font-size: 0.82rem;
+      color: var(--muted);
+      max-width: 46ch;
+      line-height: 1.45;
     }
 
     /* Style scroller */
     #style-scroller {
-      display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px;
-      margin-bottom: 10px; scrollbar-width: thin; scrollbar-color: #e0d8c8 transparent;
+      display: flex; gap: 8px; overflow-x: auto;
+      padding-bottom: 8px; margin-bottom: 12px;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
     }
-    #style-scroller::-webkit-scrollbar { height: 4px; }
-    #style-scroller::-webkit-scrollbar-thumb { background: #e0d8c8; border-radius: 2px; }
+    #style-scroller::-webkit-scrollbar { display: none; }
+
     .style-card {
-      flex-shrink: 0; min-width: 96px; border-radius: 8px; overflow: hidden;
-      cursor: pointer; border: 2px solid transparent; background: #f5f0e8;
-      transition: border-color 0.15s; user-select: none;
+      flex-shrink: 0; min-width: 80px;
+      border-radius: 10px; overflow: hidden;
+      cursor: pointer;
+      border: 2px solid transparent;
+      background: var(--cream);
+      transition: border-color 0.15s, transform 0.12s, box-shadow 0.15s;
+      user-select: none;
     }
-    .style-card.selected { border-color: #f5d000; }
-    .style-card:hover { border-color: #e0bf00; }
-    .swatch { height: 38px; width: 100%; display: block; }
+    .style-card.selected {
+      border-color: var(--yellow);
+      box-shadow: 0 0 0 3px var(--yellow-glow);
+      transform: translateY(-1px);
+    }
+    .style-card:hover:not(.selected) { border-color: #ccc; transform: translateY(-1px); }
+
+    .swatch { height: 36px; width: 100%; display: block; }
     .swatch-original    { background: linear-gradient(135deg,#e8e0d8,#f5f2ee,#e8e0d8); }
     .swatch-kodak-gold  { background: linear-gradient(135deg,#c47a2a,#e8c97a,#f5ead0); }
     .swatch-trix-bw     { background: linear-gradient(135deg,#111,#666,#ddd); }
@@ -185,173 +540,298 @@
     .swatch-fuji-velvia { background: linear-gradient(135deg,#1a7a30,#70b840,#e83030 70%,#c02020); }
     .swatch-portra-400  { background: linear-gradient(135deg,#7a8090,#c0b8b0,#e8d8c8); }
     .swatch-ilford-hp5  { background: linear-gradient(135deg,#222,#888 40%,#ccc); }
+
     .style-card-name {
-      font-size: 0.68rem; font-weight: bold; color: #2a2014;
-      padding: 3px 5px 4px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      font-size: 0.65rem; font-weight: 600; color: var(--dark);
+      padding: 4px 5px 5px; text-align: center;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
 
     /* Options + intensity */
-    #opts-row { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 9px; }
+    #opts-row { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 10px; }
     .opt-toggle {
       display: flex; align-items: center; gap: 5px;
-      background: #f5f0e8; border: 1.5px solid #e0d8c8; border-radius: 7px;
-      padding: 5px 9px; cursor: pointer; font-size: 0.76rem; color: #4a3a24;
-      transition: border-color 0.13s, background 0.13s; user-select: none;
+      background: var(--cream); border: 1.5px solid var(--border);
+      border-radius: 8px; padding: 6px 10px;
+      cursor: pointer; font-size: 0.78rem; font-weight: 500; color: #4a3a24;
+      transition: border-color 0.13s, background 0.13s;
+      user-select: none;
     }
-    .opt-toggle.active { border-color: #f5d000; background: #fdf3c0; }
-    #intensity-wrap { display: flex; align-items: center; gap: 9px; margin-bottom: 11px; }
-    #intensity-wrap label { font-size: 0.76rem; color: #7a6a50; white-space: nowrap; min-width: 64px; }
+    .opt-toggle.active { border-color: var(--yellow); background: #fdf5c0; }
+
+    #intensity-wrap { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    #intensity-wrap label { font-size: 0.78rem; color: var(--muted); font-weight: 500; white-space: nowrap; min-width: 60px; }
     #intensity-slider {
-      flex: 1; -webkit-appearance: none; appearance: none; height: 4px; border-radius: 2px;
-      background: linear-gradient(to right, #f5d000 var(--pct,100%), #ddd var(--pct,100%));
+      flex: 1; -webkit-appearance: none; appearance: none;
+      height: 4px; border-radius: 2px;
+      background: linear-gradient(to right, var(--yellow) var(--pct,100%), #ddd var(--pct,100%));
       outline: none; cursor: pointer;
     }
     #intensity-slider::-webkit-slider-thumb {
-      -webkit-appearance: none; width: 15px; height: 15px; border-radius: 50%;
-      background: #f5d000; border: 2px solid #2a2014; cursor: pointer;
+      -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
+      background: var(--yellow); border: 2.5px solid var(--dark); cursor: pointer;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.2);
     }
-    #intensity-val { font-size: 0.76rem; color: #2a2014; font-weight: bold; min-width: 32px; text-align: right; }
+    #intensity-val { font-size: 0.78rem; color: var(--dark); font-weight: 700; min-width: 36px; text-align: right; }
+
+    /* LUT controls */
+    #lut-wrap { margin-bottom: 12px; }
+    #lut-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    #lut-select {
+      flex: 1; padding: 6px 8px; border-radius: 8px;
+      border: 1.5px solid var(--border); background: var(--cream);
+      font-size: 0.78rem; color: #4a3a24; cursor: pointer; outline: none;
+    }
+    #lut-upload-label {
+      padding: 6px 10px; border-radius: 8px; background: var(--cream);
+      border: 1.5px solid var(--border); font-size: 0.78rem; color: #4a3a24;
+      font-weight: 500; cursor: pointer; white-space: nowrap; user-select: none;
+    }
+    #lut-strength-row { display: flex; align-items: center; gap: 10px; }
+    #lut-strength-row label { font-size: 0.78rem; color: var(--muted); font-weight: 500; white-space: nowrap; min-width: 80px; }
+    #lut-strength-slider {
+      flex: 1; -webkit-appearance: none; appearance: none;
+      height: 4px; border-radius: 2px;
+      background: linear-gradient(to right, var(--yellow) 100%, #ddd 100%);
+      outline: none; cursor: pointer;
+    }
+    #lut-strength-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
+      background: var(--yellow); border: 2.5px solid var(--dark); cursor: pointer;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+    }
+    #lut-strength-val { font-size: 0.78rem; color: var(--dark); font-weight: 700; min-width: 36px; text-align: right; }
 
     /* Drop zone */
     #drop-zone {
-      border: 2px dashed #c8a800; border-radius: 10px; padding: 22px 16px;
-      text-align: center; cursor: pointer; background: #fdfaf3;
+      display: block;
+      border: 2px dashed #d4c8a8; border-radius: 12px;
+      padding: 28px 16px; text-align: center; cursor: pointer;
+      background: #faf8f2;
       transition: background 0.18s, border-color 0.18s;
     }
-    #drop-zone:hover, #drop-zone.drag-over { background: #fdf3c0; border-color: #f5d000; }
-    #drop-zone .dz-icon { font-size: 1.8rem; display: block; margin-bottom: 4px; }
-    #drop-zone p { font-size: 0.84rem; color: #7a6a50; }
+    #drop-zone:hover, #drop-zone.drag-over {
+      background: #fdf5c0; border-color: var(--yellow);
+    }
+    #drop-zone .dz-icon { font-size: 2rem; display: block; margin-bottom: 6px; }
+    #drop-zone p { font-size: 0.875rem; color: var(--muted); font-weight: 500; }
+    #drop-zone .dz-sub { font-size: 0.75rem; color: #b8aa97; margin-top: 3px; }
     #file-input { display: none; }
 
     /* Preview area */
     #preview-wrap { display: none; }
     .preview-inner {
-      position: relative; border-radius: 10px; overflow: hidden;
+      position: relative; border-radius: 12px; overflow: hidden;
       background: #111; line-height: 0;
     }
-    #preview-img { width: 100%; height: auto; display: block; transition: opacity 0.2s; }
+    #preview-img { width: 100%; height: auto; display: block; transition: opacity 0.2s; max-height: 60vw; object-fit: contain; }
     #preview-img.dimmed { opacity: 0.45; }
     .preview-overlay-spin {
       position: absolute; inset: 0; display: none;
       align-items: center; justify-content: center;
-      background: rgba(42,32,20,0.28);
+      background: rgba(26,18,8,0.3);
     }
     .preview-overlay-spin.visible { display: flex; }
     #preview-badge {
-      position: absolute; top: 9px; left: 9px;
-      background: rgba(0,0,0,0.60); color: #f5d000;
-      font-size: 0.68rem; font-weight: bold; padding: 3px 9px;
-      border-radius: 12px; letter-spacing: 0.06em;
+      position: absolute; top: 10px; left: 10px;
+      background: rgba(0,0,0,0.65); color: var(--yellow);
+      font-size: 0.72rem; font-weight: 700;
+      padding: 4px 10px; border-radius: 20px;
+      letter-spacing: 0.04em;
+      backdrop-filter: blur(4px);
     }
-    .preview-actions {
-      display: flex; gap: 8px; margin-top: 9px; align-items: center; flex-wrap: wrap;
-    }
-    .preview-hint { flex: 1; font-size: 0.76rem; color: #9a8a70; font-style: italic; }
-    #add-to-album-btn {
-      background: #f5d000; color: #2a2014; border: none; border-radius: 8px;
-      padding: 8px 16px; font-family: 'Georgia', serif; font-size: 0.85rem;
-      font-weight: bold; cursor: pointer;
-    }
-    #add-to-album-btn:hover:not(:disabled) { background: #e0bf00; }
-    #add-to-album-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    #change-photo-btn {
-      background: none; border: 1px solid #c8a800; color: #c8a800;
-      border-radius: 8px; padding: 7px 12px; font-family: 'Georgia', serif;
-      font-size: 0.80rem; cursor: pointer;
-    }
-    #change-photo-btn:hover { background: #fdf3c0; }
 
-    /* Spinner + error */
+    .preview-actions {
+      display: flex; gap: 8px; margin-top: 10px; align-items: center; flex-wrap: wrap;
+    }
+    .preview-hint { flex: 1; font-size: 0.78rem; color: var(--muted); font-style: italic; }
+
+    #add-to-album-btn {
+      background: var(--yellow); color: var(--dark); border: none; border-radius: 10px;
+      padding: 10px 18px;
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 0.875rem; font-weight: 600; cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+    #add-to-album-btn:hover:not(:disabled) { background: var(--yellow-dark); }
+    #add-to-album-btn:active { transform: scale(0.97); }
+    #add-to-album-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    #change-photo-btn {
+      background: none; border: 1.5px solid var(--border); color: var(--muted);
+      border-radius: 10px; padding: 9px 14px;
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 0.8125rem; font-weight: 500; cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    #change-photo-btn:hover { border-color: var(--yellow-dark); color: var(--dark); }
+
+    /* Spinner & error */
     .spin {
-      width: 22px; height: 22px; border: 2.5px solid #e8dfc8; border-top-color: #f5d000;
-      border-radius: 50%; animation: spin 0.75s linear infinite;
+      width: 22px; height: 22px;
+      border: 2.5px solid rgba(255,255,255,0.2);
+      border-top-color: var(--yellow);
+      border-radius: 50%; animation: spin 0.7s linear infinite;
+    }
+    .spin-dark {
+      border-color: var(--border);
+      border-top-color: var(--dark);
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    #upload-error { color: #b33; font-size: 0.80rem; margin-top: 7px; min-height: 1em; }
+
+    #upload-error { color: var(--red); font-size: 0.8125rem; font-weight: 500; margin-top: 8px; min-height: 1em; }
     #saving-spinner {
       display: none; align-items: center; gap: 8px;
-      font-size: 0.82rem; color: #7a6a50; margin-top: 7px;
+      font-size: 0.8125rem; color: var(--muted); font-weight: 500; margin-top: 8px;
     }
+    #saving-spinner .spin { border-color: var(--border); border-top-color: var(--muted); }
     #saving-spinner.visible { display: flex; }
 
-    /* ---- Photos section ---- */
+    /* ======== Photos toolbar ======== */
     #photos-toolbar {
-      display: flex; align-items: center; gap: 10px;
+      display: flex; align-items: center; gap: 8px;
       margin-bottom: 12px; flex-wrap: wrap;
     }
+
     #search-input {
-      flex: 1; min-width: 180px; padding: 8px 12px;
-      border: 1.5px solid #e0d8c8; border-radius: 8px;
-      font-family: 'Georgia', serif; font-size: 0.86rem;
-      background: #fff; color: #2a2014; outline: none;
+      flex: 1; min-width: 140px;
+      padding: 9px 14px;
+      border: 1.5px solid var(--border); border-radius: 10px;
+      font-family: 'Inter', system-ui, sans-serif; font-size: 0.875rem;
+      background: var(--card); color: var(--dark); outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
     }
-    #search-input:focus { border-color: #f5d000; }
-    #photo-count { font-size: 0.78rem; color: #9a8a70; white-space: nowrap; }
+    #search-input:focus { border-color: var(--yellow); box-shadow: 0 0 0 3px var(--yellow-glow); }
+    #search-input::placeholder { color: #b8aa97; }
+
+    #photo-count { font-size: 0.78rem; color: var(--muted); font-weight: 500; white-space: nowrap; }
+
     #find-me-btn {
-      background: #2a2014; color: #f5d000; border: none; border-radius: 8px;
-      padding: 8px 13px; font-family: 'Georgia', serif; font-size: 0.80rem;
-      font-weight: bold; cursor: pointer; white-space: nowrap; flex-shrink: 0;
+      background: var(--dark); color: var(--yellow);
+      border: none; border-radius: 10px;
+      padding: 9px 14px;
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 0.8125rem; font-weight: 600;
+      cursor: pointer; white-space: nowrap;
       display: flex; align-items: center; gap: 5px;
+      transition: background 0.15s;
+      flex-shrink: 0;
     }
-    #find-me-btn:hover { background: #3d3020; }
+    #find-me-btn:hover { background: var(--dark2); }
     #find-me-btn.loading { opacity: 0.6; cursor: not-allowed; }
 
-    /* Photo grid */
-    #photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 11px; }
-    @media (max-width: 700px) { #photo-grid { grid-template-columns: repeat(2, 1fr); } }
-    @media (max-width: 400px) { #photo-grid { grid-template-columns: 1fr; } }
+    /* ======== Photo grid ======== */
+    #photo-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+    @media (max-width: 600px) { #photo-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; } }
+    @media (max-width: 340px) { #photo-grid { grid-template-columns: 1fr; } }
 
     .photo-card {
-      background: #fff; border-radius: 10px; overflow: hidden;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-      transition: transform 0.14s, box-shadow 0.14s;
+      background: var(--card);
+      border-radius: 12px; overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.07), 0 3px 10px rgba(0,0,0,0.06);
+      transition: transform 0.15s, box-shadow 0.15s;
+      border: 1px solid rgba(0,0,0,0.05);
     }
-    .photo-card:hover { transform: translateY(-2px); box-shadow: 0 5px 18px rgba(0,0,0,0.12); }
-    .photo-card.fade-in { animation: fadeIn 0.38s ease; }
-    @keyframes fadeIn { from { opacity:0; transform: translateY(7px); } to { opacity:1; transform: translateY(0); } }
+    .photo-card:hover { transform: translateY(-3px); box-shadow: 0 4px 20px rgba(0,0,0,0.12); }
+    .photo-card.fade-in { animation: fadeIn 0.4s ease; }
+    @keyframes fadeIn { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: none; } }
 
     .photo-img-wrap { position: relative; aspect-ratio: 4/3; overflow: hidden; cursor: zoom-in; }
-    .photo-img-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .photo-img-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.3s ease; }
+    .photo-card:hover .photo-img-wrap img { transform: scale(1.04); }
+
     .photo-overlay {
       position: absolute; bottom: 0; left: 0; right: 0;
-      background: linear-gradient(transparent, rgba(0,0,0,0.65));
-      padding: 16px 9px 7px;
+      background: linear-gradient(transparent, rgba(0,0,0,0.7));
+      padding: 18px 9px 8px;
       display: flex; align-items: flex-end; justify-content: space-between; gap: 5px;
     }
     .style-badge {
-      background: #f5d000; color: #2a2014; font-size: 0.63rem; font-weight: bold;
-      letter-spacing: 0.06em; padding: 2px 6px; border-radius: 10px; white-space: nowrap;
+      background: var(--yellow); color: var(--dark);
+      font-size: 0.62rem; font-weight: 700;
+      letter-spacing: 0.04em; padding: 2px 7px;
+      border-radius: 20px; white-space: nowrap;
     }
-    .photo-uploader-time { font-size: 0.67rem; color: rgba(255,255,255,0.86); text-align: right; line-height: 1.3; }
+    .photo-uploader-time {
+      font-size: 0.66rem; color: rgba(255,255,255,0.88);
+      text-align: right; line-height: 1.35;
+    }
 
-    .photo-meta { padding: 7px 9px 9px; }
-    .tags-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; min-height: 24px; }
+    .photo-meta { padding: 8px 9px 10px; }
+    .tags-row { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
     .tag-pill {
-      background: #f5f0e8; color: #4a3a24; font-size: 0.67rem;
-      padding: 2px 7px; border-radius: 10px; border: 1px solid #e0d8c8;
+      background: var(--cream); color: #4a3a24;
+      font-size: 0.67rem; font-weight: 500;
+      padding: 3px 8px; border-radius: 20px;
+      border: 1px solid var(--border);
     }
     .tag-faces-btn {
-      background: none; border: 1px dashed #c8a800; color: #c8a800;
-      font-size: 0.67rem; padding: 2px 7px; border-radius: 10px;
-      cursor: pointer; font-family: 'Georgia', serif; transition: background 0.12s;
+      background: none; border: 1px dashed var(--yellow-dark); color: var(--yellow-dark);
+      font-size: 0.67rem; font-weight: 600;
+      padding: 3px 8px; border-radius: 20px;
+      cursor: pointer;
+      font-family: 'Inter', system-ui, sans-serif;
+      transition: background 0.12s;
     }
-    .tag-faces-btn:hover { background: #fdf3c0; }
+    .tag-faces-btn:hover { background: #fdf5c0; }
+    .tag-save-btn {
+      background: none; border: 1px solid var(--border); color: var(--muted);
+      font-size: 0.67rem; font-weight: 600;
+      padding: 3px 8px; border-radius: 20px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+      transition: border-color 0.12s, color 0.12s;
+    }
+    .tag-save-btn:hover { border-color: var(--muted); color: var(--dark); }
+    .photo-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 8px;
+    }
 
     /* Empty state */
-    #empty-state { display: none; text-align: center; padding: 55px 20px; color: #9a8a70; }
-    #empty-state .empty-icon { font-size: 2.4rem; display: block; margin-bottom: 10px; }
+    #empty-state {
+      display: none; text-align: center;
+      padding: 60px 20px; color: var(--muted);
+    }
+    .empty-icon { font-size: 3rem; display: block; margin-bottom: 12px; opacity: 0.5; }
+    #empty-state p { font-size: 0.9375rem; font-weight: 500; }
+    #empty-state small { font-size: 0.8rem; color: #b8aa97; margin-top: 4px; display: block; }
 
-    /* Lightbox */
+    /* ======== Lightbox ======== */
     #lightbox {
       display: none; position: fixed; inset: 0;
-      background: rgba(0,0,0,0.90); z-index: 300;
-      align-items: center; justify-content: center; cursor: zoom-out;
+      background: rgba(0,0,0,0.92); z-index: 300;
+      align-items: center; justify-content: center;
+      cursor: zoom-out;
+      backdrop-filter: blur(8px);
     }
     #lightbox.open { display: flex; }
-    #lightbox img { max-width: 94vw; max-height: 94vh; object-fit: contain; border-radius: 6px; }
+    #lightbox img {
+      max-width: 94vw; max-height: 94vh;
+      object-fit: contain; border-radius: 8px;
+      box-shadow: 0 0 80px rgba(0,0,0,0.5);
+    }
     #lightbox-close {
-      position: absolute; top: 15px; right: 18px; color: #fff;
-      font-size: 1.8rem; cursor: pointer; background: none; border: none; line-height: 1;
+      position: absolute; top: 16px; right: 16px;
+      color: rgba(255,255,255,0.7);
+      background: rgba(255,255,255,0.1);
+      backdrop-filter: blur(4px);
+      width: 36px; height: 36px; border-radius: 50%;
+      font-size: 1.2rem; cursor: pointer;
+      border: none; display: flex; align-items: center; justify-content: center;
+      transition: background 0.15s;
+    }
+    #lightbox-close:hover { background: rgba(255,255,255,0.2); color: #fff; }
+
+    @media (max-width: 820px) {
+      #album-hero { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -359,7 +839,10 @@
 
   <!-- Fixed header -->
   <header id="app-header">
-    <div id="header-album-name">{{ album.name }}</div>
+    <div id="header-left">
+      <div class="header-logo">FF</div>
+      <div id="header-album-name">{{ album.name }}</div>
+    </div>
     <div id="header-right">
       <div id="user-pill"></div>
       <button id="share-btn" onclick="openShareModal()">Share</button>
@@ -370,9 +853,9 @@
   <div class="modal-overlay" id="join-modal">
     <div class="modal-card">
       <div class="modal-title">Welcome to {{ album.name }}</div>
-      <div class="modal-subtitle">What's your name?</div>
+      <div class="modal-subtitle">What's your name? It'll show on your photos.</div>
       <input class="modal-input" type="text" id="join-name-input" placeholder="Your name" autocomplete="off">
-      <button class="modal-btn" onclick="submitJoin()">Join</button>
+      <button class="modal-btn" onclick="submitJoin()">Join album</button>
     </div>
   </div>
 
@@ -381,20 +864,35 @@
     <div class="modal-card">
       <button class="modal-close" onclick="closeModal('share-modal')">&times;</button>
       <div class="modal-title">Share this album</div>
+      <div class="modal-subtitle">Others can join with the code or QR</div>
       <div id="share-code-display"></div>
       <img id="share-qr" src="" alt="QR code">
       <button id="copy-link-btn" onclick="copyLink()">Copy link</button>
-      <p class="share-hint">Scan with camera to join</p>
+      <p class="share-hint">Point camera at QR to open on a phone</p>
+    </div>
+  </div>
+
+  <!-- Find me modal -->
+  <div class="modal-overlay" id="find-me-modal">
+    <div class="modal-card">
+      <button class="modal-close" onclick="closeModal('find-me-modal')">&times;</button>
+      <div class="modal-title">Find Me</div>
+      <div class="modal-subtitle">Pick one of the recognized face tags first, or upload a photo if you don't see the right person.</div>
+      <div id="find-me-status">Loading recognized face tags…</div>
+      <div id="find-me-grid"></div>
+      <div class="find-me-actions">
+        <button class="find-me-upload-btn" onclick="triggerFindMeUpload()">Upload a photo instead</button>
+      </div>
     </div>
   </div>
 
   <!-- Face modal -->
   <div class="modal-overlay" id="face-modal">
-    <div class="modal-card" style="max-width:480px">
+    <div class="modal-card" style="max-width:480px; border-radius:20px 20px 0 0;">
       <button class="modal-close" onclick="closeModal('face-modal')">&times;</button>
-      <div class="modal-title">Faces</div>
+      <div class="modal-title">Faces in this photo</div>
       <div class="modal-subtitle">Tap a face to find that person across the album</div>
-      <div id="face-modal-status">Detecting faces…<br><br><div class="spin" style="margin:0 auto"></div></div>
+      <div id="face-modal-status">Detecting faces&hellip;<br><br><div class="spin spin-dark" style="margin:0 auto"></div></div>
       <div id="face-grid"></div>
     </div>
   </div>
@@ -407,27 +905,63 @@
 
   <!-- Main -->
   <div id="main-content">
+    <section id="album-hero">
+      <div class="hero-panel">
+        <div class="hero-kicker">Shared Album</div>
+        <h1 class="hero-title">{{ album.name }}</h1>
+        <p class="hero-copy">Upload photos, apply film looks, and browse anonymous face tags to find matching shots across the album.</p>
+        <div class="hero-stats">
+          <div class="hero-stat"><strong id="hero-photo-total">0</strong><span>Photos</span></div>
+          <div class="hero-stat"><strong id="hero-people-total">0</strong><span>People</span></div>
+          <div class="hero-stat"><strong id="hero-filter-state">Live</strong><span>Search</span></div>
+        </div>
+      </div>
+      <aside class="hero-side">
+        <div class="hero-side-card">
+          <strong>Find People Faster</strong>
+          <p>Use “Find me” with a selfie or tap any detected face to see the matching cluster across the album.</p>
+        </div>
+        <div class="hero-side-card">
+          <strong>Designed For Sharing</strong>
+          <p>The album updates live, keeps the film style controls upfront, and makes the people view easier to browse.</p>
+        </div>
+      </aside>
+    </section>
 
     <!-- Upload section -->
     <div id="upload-section">
+      <div class="section-head">
+        <div>
+          <div class="section-title">Film Style</div>
+          <div class="section-copy">Choose a film stock. Each style changes the color grade, grain, and tone of your photos.</div>
+        </div>
+      </div>
 
       <!-- Style picker -->
       <div id="style-scroller">
-        <div class="style-card" data-style="original">
+        <div class="style-card selected" data-style="original">
           <span class="swatch swatch-original"></span>
           <div class="style-card-name">Original</div>
         </div>
-        <div class="style-card selected" data-style="kodak-gold">
+        <div class="style-card" data-style="portra-400">
+          <span class="swatch swatch-portra-400"></span>
+          <div class="style-card-name">Portra 400</div>
+        </div>
+        <div class="style-card" data-style="kodak-gold">
           <span class="swatch swatch-kodak-gold"></span>
           <div class="style-card-name">Kodak Gold</div>
+        </div>
+        <div class="style-card" data-style="vintage-70s">
+          <span class="swatch swatch-vintage-70s"></span>
+          <div class="style-card-name">Vintage 70s</div>
         </div>
         <div class="style-card" data-style="trix-bw">
           <span class="swatch swatch-trix-bw"></span>
           <div class="style-card-name">Tri-X B&amp;W</div>
         </div>
-        <div class="style-card" data-style="vintage-70s">
-          <span class="swatch swatch-vintage-70s"></span>
-          <div class="style-card-name">Vintage 70s</div>
+        <div class="style-card" data-style="ilford-hp5">
+          <span class="swatch swatch-ilford-hp5"></span>
+          <div class="style-card-name">Ilford HP5</div>
         </div>
         <div class="style-card" data-style="cinematic">
           <span class="swatch swatch-cinematic"></span>
@@ -436,14 +970,6 @@
         <div class="style-card" data-style="fuji-velvia">
           <span class="swatch swatch-fuji-velvia"></span>
           <div class="style-card-name">Fuji Velvia</div>
-        </div>
-        <div class="style-card" data-style="portra-400">
-          <span class="swatch swatch-portra-400"></span>
-          <div class="style-card-name">Portra 400</div>
-        </div>
-        <div class="style-card" data-style="ilford-hp5">
-          <span class="swatch swatch-ilford-hp5"></span>
-          <div class="style-card-name">Ilford HP5</div>
         </div>
       </div>
 
@@ -461,15 +987,34 @@
         <span id="intensity-val">100%</span>
       </div>
 
-      <!-- Drop zone (shown when no file loaded) -->
-      <div id="drop-zone" onclick="document.getElementById('file-input').click()" role="button" tabindex="0">
-        <span class="dz-icon">&#127902;</span>
-        <p>Tap to load a photo</p>
-        <p style="font-size:0.73rem;color:#bbb;margin-top:3px">JPEG / PNG / WEBP</p>
-        <input type="file" id="file-input" accept="image/*">
+      <!-- LUT -->
+      <div id="lut-wrap">
+        <div id="lut-row">
+          <select id="lut-select">
+            <option value="">No LUT</option>
+          </select>
+          <label id="lut-upload-label" title="Upload a .cube LUT file">
+            + Upload LUT
+            <input type="file" id="lut-file-input" accept=".cube" style="display:none">
+          </label>
+        </div>
+        <div id="lut-strength-row" style="display:none">
+          <label for="lut-strength-slider">LUT Strength</label>
+          <input type="range" id="lut-strength-slider" min="0" max="100" value="100">
+          <span id="lut-strength-val">100%</span>
+        </div>
+        <div id="lut-error" style="color:#c0392b;font-size:0.8rem;margin-top:4px"></div>
       </div>
 
-      <!-- Preview (shown after file loaded) -->
+      <!-- Drop zone -->
+      <label id="drop-zone" for="file-input" role="button" tabindex="0">
+        <span class="dz-icon">&#127902;</span>
+        <p>Tap to add a photo</p>
+        <p class="dz-sub">JPEG / PNG / WEBP &middot; max 16 MB</p>
+      </label>
+      <input type="file" id="file-input" accept="image/*" style="display:none">
+
+      <!-- Preview -->
       <div id="preview-wrap">
         <div class="preview-inner">
           <img id="preview-img" src="" alt="Preview">
@@ -477,9 +1022,9 @@
           <div id="preview-badge">Original</div>
         </div>
         <div class="preview-actions">
-          <span class="preview-hint" id="preview-hint">Click a style above to preview</span>
-          <button id="add-to-album-btn" onclick="submitToAlbum()" disabled>Add to Album</button>
+          <span class="preview-hint" id="preview-hint">Upload a photo to preview the Portra 400 look</span>
           <button id="change-photo-btn" onclick="resetUpload()">Change</button>
+          <button id="add-to-album-btn" onclick="submitToAlbum()" disabled>Add to Album</button>
         </div>
       </div>
 
@@ -490,9 +1035,9 @@
     <!-- Photos -->
     <div id="photos-section">
       <div id="photos-toolbar">
-        <button id="find-me-btn" onclick="document.getElementById('find-me-input').click()">&#128247; Find me in album</button>
+        <button id="find-me-btn" onclick="openFindMeModal()">&#128100; Find me</button>
         <input type="file" id="find-me-input" accept="image/*" style="display:none">
-        <input type="text" id="search-input" placeholder="Filter by uploader…" oninput="filterPhotos(this.value)">
+        <input type="text" id="search-input" placeholder="Filter by uploader..." oninput="filterPhotos(this.value)">
         <span id="photo-count">0 photos</span>
       </div>
       <div id="people-bar">
@@ -502,11 +1047,12 @@
       <div id="face-filter-bar">
         <img id="face-filter-thumb" src="" alt="">
         <span id="face-filter-label">Showing photos with this person</span>
-        <button id="face-filter-clear" onclick="clearFaceFilter()">× Clear</button>
+        <button id="face-filter-clear" onclick="clearFaceFilter()">&times; Clear</button>
       </div>
       <div id="empty-state">
         <span class="empty-icon">&#127902;</span>
-        <p>No photos yet. Be the first to add one!</p>
+        <p>No photos yet</p>
+        <small>Be the first to add one above!</small>
       </div>
       <div id="photo-grid"></div>
     </div>
@@ -517,30 +1063,37 @@
     const albumName = '{{ album.name | e }}';
 
     const STYLE_NAMES = {
-      'kodak-gold': 'Kodak Gold', 'trix-bw': 'Tri-X B&W',
-      'vintage-70s': 'Vintage 70s', 'cinematic': 'Cinematic',
-      'fuji-velvia': 'Fuji Velvia', 'portra-400': 'Portra 400',
-      'ilford-hp5': 'Ilford HP5',
+      'original':    'Original',
+      'portra-400':  'Portra 400',
+      'kodak-gold':  'Kodak Gold',
+      'trix-bw':     'Tri-X B&W',
+      'vintage-70s': 'Vintage 70s',
+      'cinematic':   'Cinematic',
+      'fuji-velvia': 'Fuji Velvia',
+      'ilford-hp5':  'Ilford HP5',
     };
 
     // ---- State ----
     let myName        = localStorage.getItem('name_' + albumId) || '';
-    let selectedStyle = 'kodak-gold';
+    let selectedStyle = 'original';
     let optLeak = false, optDate = false, optBorder = false;
+    let selectedLutId   = '';
     let maxKnownId    = 0;
     let allPhotos     = [];
     let pollTimer     = null;
 
     // Preview state
     let currentFile        = null;
-    let currentPreviewBlob = null;   // blob URL of last successful preview
-    let previewAbort       = null;   // AbortController for in-flight preview
+    let currentPreviewBlob = null;
+    let previewAbort       = null;
     let previewDebounce    = null;
 
     // Face modal state
     let faceModalPhotoId = null;
-    let faceFilterPhotoIds = null;   // Set<number> when active, null = no filter
+    let faceFilterPhotoIds = null;
     let faceFilterCropUrl  = null;
+    let peopleCount = 0;
+    let knownPeople = [];
 
     // ---- DOM ready ----
     document.addEventListener('DOMContentLoaded', () => {
@@ -560,14 +1113,13 @@
       });
 
       // Style cards
+      document.getElementById('intensity-wrap').style.display = 'none'; // original is default
       document.querySelectorAll('.style-card').forEach(card => {
         card.addEventListener('click', () => {
           document.querySelectorAll('.style-card').forEach(c => c.classList.remove('selected'));
           card.classList.add('selected');
           selectedStyle = card.dataset.style;
-          const isOriginal = selectedStyle === 'original';
-          document.getElementById('opts-row').style.display      = isOriginal ? 'none' : '';
-          document.getElementById('intensity-wrap').style.display = isOriginal ? 'none' : '';
+          document.getElementById('intensity-wrap').style.display = selectedStyle === 'original' ? 'none' : '';
           triggerPreview();
         });
       });
@@ -587,7 +1139,49 @@
       dz.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') document.getElementById('file-input').click(); });
 
       document.getElementById('join-name-input').addEventListener('keydown', e => { if (e.key === 'Enter') submitJoin(); });
-      document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeLightbox(); closeModal('share-modal'); closeModal('face-modal'); } });
+      document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeLightbox(); closeModal('share-modal'); closeModal('face-modal'); closeModal('find-me-modal'); } });
+
+      // LUT select
+      document.getElementById('lut-select').addEventListener('change', e => {
+        selectedLutId = e.target.value;
+        document.getElementById('lut-strength-row').style.display = selectedLutId ? '' : 'none';
+        schedulePreview(300);
+      });
+
+      // LUT strength slider
+      const lutSlider = document.getElementById('lut-strength-slider');
+      lutSlider.addEventListener('input', () => {
+        const v = lutSlider.value;
+        document.getElementById('lut-strength-val').textContent = v + '%';
+        schedulePreview(300);
+      });
+
+      // LUT file upload
+      document.getElementById('lut-upload-label').addEventListener('click', e => {
+        document.getElementById('lut-file-input').click();
+        e.preventDefault();
+      });
+      document.getElementById('lut-file-input').addEventListener('change', async e => {
+        const file = e.target.files[0];
+        e.target.value = '';
+        if (!file) return;
+        const errEl = document.getElementById('lut-error');
+        errEl.textContent = '';
+        const fd = new FormData();
+        fd.append('lut_file', file);
+        try {
+          const res  = await fetch(`/a/${albumId}/upload-lut`, { method: 'POST', body: fd });
+          const data = await res.json();
+          if (!res.ok) { errEl.textContent = data.error || 'Upload failed'; return; }
+          addLutOption(data.id, data.name, '', false);
+          document.getElementById('lut-select').value = String(data.id);
+          selectedLutId = String(data.id);
+          document.getElementById('lut-strength-row').style.display = '';
+          schedulePreview(300);
+        } catch {
+          errEl.textContent = 'Upload failed';
+        }
+      });
     });
 
     // ---- Join ----
@@ -600,10 +1194,40 @@
       init();
     }
 
+    const _lutOptgroups = {};
+
+    function _getOrCreateOptgroup(label) {
+      if (_lutOptgroups[label]) return _lutOptgroups[label];
+      const sel = document.getElementById('lut-select');
+      const grp = document.createElement('optgroup');
+      grp.label = label;
+      sel.appendChild(grp);
+      _lutOptgroups[label] = grp;
+      return grp;
+    }
+
+    function addLutOption(id, name, category, builtin) {
+      const label = builtin ? (category || 'Film Presets') : 'My LUTs';
+      const grp = _getOrCreateOptgroup(label);
+      const opt = document.createElement('option');
+      opt.value = String(id);
+      opt.textContent = name;
+      grp.appendChild(opt);
+    }
+
+    async function loadLuts() {
+      try {
+        const res  = await fetch(`/a/${albumId}/luts`);
+        const luts = await res.json();
+        luts.forEach(l => addLutOption(l.id, l.name, l.category, l.builtin));
+      } catch {}
+    }
+
     function init() {
       document.getElementById('user-pill').textContent = myName;
       loadAllPhotos();
       loadPeople();
+      loadLuts();
       startPolling();
     }
 
@@ -614,7 +1238,7 @@
         allPhotos = []; maxKnownId = 0;
         document.getElementById('photo-grid').innerHTML = '';
         photos.forEach(p => { allPhotos.push(p); if (p.id > maxKnownId) maxKnownId = p.id; appendPhoto(p); });
-        updatePhotoCount(); updateEmptyState();
+        updatePhotoCount(); updateEmptyState(); refreshHeroStats();
       } catch(e) { console.error(e); }
     }
 
@@ -628,7 +1252,7 @@
             if (p.id > maxKnownId) maxKnownId = p.id;
             prependPhoto(p);
           });
-          if (photos.length) { updatePhotoCount(); updateEmptyState(); }
+          if (photos.length) { updatePhotoCount(); updateEmptyState(); refreshHeroStats(); }
         } catch(e) {}
       }, 5000);
     }
@@ -646,15 +1270,16 @@
       currentFile = file;
       document.getElementById('upload-error').textContent = '';
 
-      // Show original immediately
+      const _sn = STYLE_NAMES[selectedStyle] || selectedStyle;
       document.getElementById('preview-img').src = URL.createObjectURL(file);
-      document.getElementById('preview-badge').textContent = 'Original';
-      document.getElementById('preview-hint').textContent = 'Click a style to preview';
+      document.getElementById('preview-badge').textContent = _sn;
+      document.getElementById('preview-hint').textContent = selectedStyle === 'original'
+        ? 'Showing original — pick a filter or add as-is'
+        : 'Preparing the ' + _sn + ' preview';
       document.getElementById('add-to-album-btn').disabled = true;
       document.getElementById('drop-zone').style.display = 'none';
       document.getElementById('preview-wrap').style.display = 'block';
 
-      // Auto-preview with currently selected style
       triggerPreview();
     }
 
@@ -677,14 +1302,13 @@
     async function triggerPreview() {
       if (!currentFile) return;
 
-      // Cancel previous in-flight request
       if (previewAbort) previewAbort.abort();
       previewAbort = new AbortController();
 
       const img = document.getElementById('preview-img');
       img.classList.add('dimmed');
       document.getElementById('preview-spin').classList.add('visible');
-      document.getElementById('preview-badge').textContent = STYLE_NAMES[selectedStyle] + '…';
+      document.getElementById('preview-badge').textContent = (STYLE_NAMES[selectedStyle] || selectedStyle) + '…';
       document.getElementById('add-to-album-btn').disabled = true;
 
       const fd = new FormData();
@@ -694,20 +1318,24 @@
       fd.append('light_leak',  optLeak   ? '1' : '0');
       fd.append('date_stamp',  optDate   ? '1' : '0');
       fd.append('film_border', optBorder ? '1' : '0');
+      if (selectedLutId) {
+        fd.append('lut_id',       selectedLutId);
+        fd.append('lut_strength', document.getElementById('lut-strength-slider').value);
+      }
 
       try {
-        const res = await fetch('/upload', { method: 'POST', body: fd, signal: previewAbort.signal });
+        const res = await fetch('/a/' + albumId + '/preview', { method: 'POST', body: fd, signal: previewAbort.signal });
         if (!res.ok) throw new Error('Preview failed');
         const blob = await res.blob();
         if (currentPreviewBlob) URL.revokeObjectURL(currentPreviewBlob);
         currentPreviewBlob = URL.createObjectURL(blob);
         img.src = currentPreviewBlob;
-        document.getElementById('preview-badge').textContent = STYLE_NAMES[selectedStyle];
+        document.getElementById('preview-badge').textContent = STYLE_NAMES[selectedStyle] || selectedStyle;
         document.getElementById('preview-hint').textContent = 'Looking good? Add it to the album.';
         document.getElementById('add-to-album-btn').disabled = false;
       } catch (err) {
         if (err.name !== 'AbortError') {
-          document.getElementById('preview-badge').textContent = STYLE_NAMES[selectedStyle];
+          document.getElementById('preview-badge').textContent = STYLE_NAMES[selectedStyle] || selectedStyle;
           document.getElementById('upload-error').textContent = 'Preview error: ' + err.message;
         }
       } finally {
@@ -723,13 +1351,17 @@
       document.getElementById('upload-error').textContent = '';
 
       const fd = new FormData();
-      fd.append('image',       currentFile);
-      fd.append('style',       selectedStyle);
-      fd.append('uploaded_by', myName);
-      fd.append('intensity',   document.getElementById('intensity-slider').value);
-      fd.append('light_leak',  optLeak   ? '1' : '0');
-      fd.append('date_stamp',  optDate   ? '1' : '0');
-      fd.append('film_border', optBorder ? '1' : '0');
+      fd.append('image',        currentFile);
+      fd.append('style',        selectedStyle);
+      fd.append('uploaded_by',  myName);
+      fd.append('intensity',    document.getElementById('intensity-slider').value);
+      fd.append('light_leak',   optLeak   ? '1' : '0');
+      fd.append('date_stamp',   optDate   ? '1' : '0');
+      fd.append('film_border',  optBorder ? '1' : '0');
+      if (selectedLutId) {
+        fd.append('lut_id',       selectedLutId);
+        fd.append('lut_strength', document.getElementById('lut-strength-slider').value);
+      }
 
       try {
         const res = await fetch('/a/' + albumId + '/upload', { method: 'POST', body: fd });
@@ -738,9 +1370,9 @@
         allPhotos.unshift(photo);
         if (photo.id > maxKnownId) maxKnownId = photo.id;
         prependPhoto(photo);
-        updatePhotoCount(); updateEmptyState();
-        setTimeout(loadPeople, 1500);   // refresh people bar after face detection runs
-        resetUpload();          // go back to drop zone ready for next photo
+        updatePhotoCount(); updateEmptyState(); refreshHeroStats();
+        setTimeout(loadPeople, 1500);
+        resetUpload();
       } catch (err) {
         document.getElementById('upload-error').textContent = 'Error: ' + err.message;
         document.getElementById('add-to-album-btn').disabled = false;
@@ -760,6 +1392,12 @@
 
     // ---- Render photos ----
     function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+    function buildSearchText(photo) {
+      return [
+        photo.uploaded_by || '',
+        ...(photo.tags || []),
+      ].join(' ').toLowerCase();
+    }
 
     function relativeTime(iso) {
       const s = Math.floor((Date.now() - new Date(iso.replace('Z','+00:00')).getTime()) / 1000);
@@ -775,8 +1413,10 @@
       el.className = 'photo-card';
       el.dataset.photoId  = photo.id;
       el.dataset.uploader = photo.uploaded_by;
-      const styleName  = STYLE_NAMES[photo.style] || photo.style;
-      const thumbSrc   = photo.thumb_url || photo.url;   // fallback for old photos without thumb
+      el.dataset.search   = buildSearchText(photo);
+      const styleName = STYLE_NAMES[photo.style] || photo.style;
+      const thumbSrc  = photo.thumb_url || photo.url;
+      const textTags = (photo.tags || []).map(tag => `<span class="tag-pill">${escapeHtml(tag)}</span>`).join('');
       el.innerHTML = `
         <div class="photo-img-wrap" onclick="openLightbox('${escapeHtml(photo.url)}')">
           <img src="${escapeHtml(thumbSrc)}" alt="${escapeHtml(styleName)}" loading="lazy">
@@ -791,8 +1431,9 @@
         <div class="photo-meta">
           <div class="tags-row">
             <button class="tag-faces-btn" onclick="openFaceModal(${photo.id})">&#128100; Faces</button>
-            <a class="tag-pill" href="${escapeHtml(photo.url)}" download style="text-decoration:none">&#8595; Save</a>
+            <a class="tag-save-btn" href="${escapeHtml(photo.url)}" download>&#8595; Save</a>
           </div>
+          ${textTags ? `<div class="photo-tags">${textTags}</div>` : ''}
         </div>`;
       return el;
     }
@@ -808,6 +1449,11 @@
       document.getElementById('empty-state').style.display =
         document.querySelectorAll('#photo-grid .photo-card').length === 0 ? 'block' : 'none';
     }
+    function refreshHeroStats() {
+      document.getElementById('hero-photo-total').textContent = allPhotos.length;
+      document.getElementById('hero-people-total').textContent = peopleCount;
+      document.getElementById('hero-filter-state').textContent = faceFilterPhotoIds ? 'Face On' : 'Live';
+    }
 
     setInterval(() => {
       document.querySelectorAll('.rel-time').forEach(el => { el.textContent = relativeTime(el.dataset.uploadedAt); });
@@ -817,7 +1463,7 @@
     function filterPhotos(q) {
       q = q.toLowerCase().trim();
       document.querySelectorAll('#photo-grid .photo-card').forEach(card => {
-        const textMatch = !q || card.dataset.uploader.toLowerCase().includes(q);
+        const textMatch = !q || (card.dataset.search || '').includes(q);
         const faceMatch = !faceFilterPhotoIds || faceFilterPhotoIds.has(Number(card.dataset.photoId));
         card.style.display = (textMatch && faceMatch) ? '' : 'none';
       });
@@ -829,7 +1475,7 @@
       faceModalPhotoId = photoId;
       document.getElementById('face-grid').innerHTML = '';
       document.getElementById('face-modal-status').style.display = 'block';
-      document.getElementById('face-modal-status').innerHTML = 'Detecting faces&hellip;<br><br><div class="spin" style="margin:0 auto"></div>';
+      document.getElementById('face-modal-status').innerHTML = 'Detecting faces&hellip;<br><br><div class="spin spin-dark" style="margin:0 auto"></div>';
       document.getElementById('face-modal').classList.add('open');
 
       try {
@@ -890,16 +1536,67 @@
       document.getElementById('face-filter-bar').classList.add('visible');
       filterPhotos(document.getElementById('search-input').value);
       updatePhotoCount();
+      refreshHeroStats();
     }
 
     function clearFaceFilter() {
       faceFilterPhotoIds = null;
       faceFilterCropUrl  = null;
       document.getElementById('face-filter-bar').classList.remove('visible');
-      // Deactivate any selected person thumb
       document.querySelectorAll('.person-thumb').forEach(t => t.classList.remove('active'));
       filterPhotos(document.getElementById('search-input').value);
       updatePhotoCount();
+      refreshHeroStats();
+    }
+
+    function setActivePersonThumb(personId) {
+      document.querySelectorAll('.person-thumb').forEach(t => {
+        t.classList.toggle('active', Number(t.dataset.personId) === Number(personId));
+      });
+    }
+
+    // ---- Find me modal ----
+    async function openFindMeModal() {
+      document.getElementById('find-me-modal').classList.add('open');
+      document.getElementById('find-me-status').className = '';
+      document.getElementById('find-me-status').textContent = 'Loading recognized face tags…';
+      if (!knownPeople.length) {
+        await loadPeople();
+      }
+      renderFindMePeople();
+    }
+
+    function renderFindMePeople() {
+      const grid = document.getElementById('find-me-grid');
+      const status = document.getElementById('find-me-status');
+      grid.innerHTML = '';
+
+      if (!knownPeople.length) {
+        status.textContent = 'No recognized face tags are ready yet. You can upload a photo instead.';
+        return;
+      }
+
+      status.textContent = 'Choose a face tag to filter the album instantly.';
+      knownPeople.forEach(person => {
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = 'find-me-person';
+        card.innerHTML = `
+          <img src="${escapeHtml(person.cover_url)}" alt="face tag">
+          <div class="find-me-person-label">Face ${person.id}</div>
+          <div class="find-me-person-meta">${person.face_count} face matches</div>`;
+        card.addEventListener('click', () => {
+          closeModal('find-me-modal');
+          setActivePersonThumb(person.id);
+          applyFaceFilter(person.photo_ids, person.cover_url);
+        });
+        grid.appendChild(card);
+      });
+    }
+
+    function triggerFindMeUpload() {
+      closeModal('find-me-modal');
+      document.getElementById('find-me-input').click();
     }
 
     // ---- People bar ----
@@ -909,10 +1606,17 @@
         const row = document.getElementById('people-row');
         const bar = document.getElementById('people-bar');
         row.innerHTML = '';
+        knownPeople = Array.isArray(data.people) ? data.people : [];
         if (!data.people || data.people.length === 0) {
+          peopleCount = 0;
           bar.classList.remove('visible');
+          refreshHeroStats();
+          if (document.getElementById('find-me-modal').classList.contains('open')) {
+            renderFindMePeople();
+          }
           return;
         }
+        peopleCount = data.people.length;
         data.people.forEach(p => {
           const div = document.createElement('div');
           div.className = 'person-thumb';
@@ -922,11 +1626,15 @@
             : '';
           div.innerHTML = `<img src="${escapeHtml(p.cover_url)}" alt="person">
                            ${maybeBadge}
-                           <span class="person-count">${p.face_count}</span>`;
+                           <span class="person-count">Face ${p.id}</span>`;
           div.addEventListener('click', () => selectPerson(div, p));
           row.appendChild(div);
         });
         bar.classList.add('visible');
+        refreshHeroStats();
+        if (document.getElementById('find-me-modal').classList.contains('open')) {
+          renderFindMePeople();
+        }
       } catch(e) { console.error(e); }
     }
 
@@ -937,11 +1645,11 @@
         clearFaceFilter();
         return;
       }
-      thumbEl.classList.add('active');
+      setActivePersonThumb(person.id);
       applyFaceFilter(person.photo_ids, person.cover_url);
     }
 
-    // ---- Find me (upload own photo) ----
+    // ---- Find me ----
     document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('find-me-input').addEventListener('change', async e => {
         const file = e.target.files[0];
@@ -949,7 +1657,7 @@
         if (!file) return;
         const btn = document.getElementById('find-me-btn');
         btn.classList.add('loading');
-        btn.textContent = '⏳ Detecting…';
+        btn.textContent = 'Scanning...';
         const fd = new FormData();
         fd.append('image', file);
         try {
@@ -989,7 +1697,6 @@
       } catch(e) {}
     }
 
-    // ---- Generic modal close ----
     function closeModal(id) { document.getElementById(id).classList.remove('open'); }
   </script>
 </body>

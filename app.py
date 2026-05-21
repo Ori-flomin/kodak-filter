@@ -13,11 +13,33 @@ import db
 import lut as lut_module
 
 _BASE        = os.path.dirname(__file__)
-_DET_MODEL   = os.path.join(_BASE, 'det_500m.onnx')    # SCRFD face detector
-_REC_MODEL   = os.path.join(_BASE, 'w600k_mbf.onnx')   # ArcFace MobileNet
+MODELS_DIR   = os.environ.get('MODELS_DIR', _BASE)
+_DET_MODEL   = os.path.join(MODELS_DIR, 'det_500m.onnx')
+_REC_MODEL   = os.path.join(MODELS_DIR, 'w600k_mbf.onnx')
 
 _det_session = None
 _rec_session = None
+
+
+def _ensure_models():
+    if os.path.isfile(_DET_MODEL) and os.path.isfile(_REC_MODEL):
+        return
+    import zipfile
+    os.makedirs(MODELS_DIR, exist_ok=True)
+    print('Downloading face recognition models (~16 MB)…', flush=True)
+    zip_path = os.path.join(MODELS_DIR, '_buffalo_sc.zip')
+    urllib.request.urlretrieve(
+        'https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_sc.zip',
+        zip_path
+    )
+    with zipfile.ZipFile(zip_path) as zf:
+        for entry in zf.namelist():
+            if entry.endswith('.onnx'):
+                dest = os.path.join(MODELS_DIR, os.path.basename(entry))
+                with open(dest, 'wb') as f:
+                    f.write(zf.read(entry))
+    os.remove(zip_path)
+    print('Face models ready.', flush=True)
 _EMB_BYTES        = 512 * 4   # 512-dim float32
 _ASSIGN_THRESHOLD = 0.53
 _MAYBE_THRESHOLD  = 0.46
@@ -29,6 +51,7 @@ def _get_sessions():
     global _det_session, _rec_session
     if _det_session is None:
         try:
+            _ensure_models()
             import onnxruntime as ort
             opts = ort.SessionOptions()
             opts.inter_op_num_threads = 2
@@ -880,6 +903,7 @@ STYLES = {
 }
 
 STYLE_NAMES = {
+    'original':    'Original',
     'portra-400':  'Portra 400',
     'kodak-gold':  'Kodak Gold',
     'trix-bw':     'Tri-X B&W',
@@ -890,7 +914,7 @@ STYLE_NAMES = {
 }
 
 
-def apply_filter(img, style='portra-400', intensity=100,
+def apply_filter(img, style='original', intensity=100,
                  light_leak=False, date_stamp=False, film_border=False,
                  lut_id=None, lut_strength=100):
     original = img.convert('RGB')
@@ -911,13 +935,19 @@ def apply_filter(img, style='portra-400', intensity=100,
             result = add_film_grain(result, intensity=17)
             result = add_vignette(result, strength=0.38, feather=0.50)
         else:
+            if style == 'original':
+                result = original.copy()
+            else:
+                fn, _ = STYLES.get(style, STYLES['portra-400'])
+                result = fn(original)
+    else:
+        if style == 'original':
+            result = original.copy()
+        else:
             fn, _ = STYLES.get(style, STYLES['portra-400'])
             result = fn(original)
-    else:
-        fn, _ = STYLES.get(style, STYLES['portra-400'])
-        result = fn(original)
 
-        if intensity < 100:
+        if intensity < 100 and style != 'original':
             orig_arr   = np.array(original,  dtype=np.float32)
             result_arr = np.array(result,    dtype=np.float32)
             alpha = intensity / 100.0
@@ -950,8 +980,8 @@ def _parse_request():
     file = request.files['image']
     if file.filename == '':
         return None, None, None, ('No file selected', 400)
-    style = request.form.get('style', 'portra-400')
-    if style not in STYLES:
+    style = request.form.get('style', 'original')
+    if style != 'original' and style not in STYLES:
         return None, None, None, ('Unknown style', 400)
     opts = {
         'intensity':   int(request.form.get('intensity', 100)),
@@ -1051,9 +1081,9 @@ def album_preview(album_id):
     if not _validate_image_bytes(raw):
         return ('Invalid image', 400)
 
-    style        = request.form.get('style', 'portra-400')
-    if style not in STYLES:
-        style = 'portra-400'
+    style        = request.form.get('style', 'original')
+    if style != 'original' and style not in STYLES:
+        style = 'original'
     intensity    = int(request.form.get('intensity', 100))
     light_leak   = request.form.get('light_leak', '0') == '1'
     date_stamp   = request.form.get('date_stamp', '0') == '1'
@@ -1122,8 +1152,8 @@ def album_upload(album_id):
     if not _validate_image_bytes(raw):
         return jsonify({'error': 'Invalid image format'}), 400
 
-    style = request.form.get('style', 'portra-400')
-    if style not in STYLES:
+    style = request.form.get('style', 'original')
+    if style != 'original' and style not in STYLES:
         return jsonify({'error': 'Unknown style'}), 400
 
     uploaded_by  = request.form.get('uploaded_by', 'Anonymous').strip() or 'Anonymous'
