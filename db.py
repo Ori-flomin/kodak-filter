@@ -2,7 +2,7 @@
 import sqlite3
 import os
 
-DB_PATH = os.path.join(os.path.dirname(__file__), 'album.db')
+DB_PATH = os.environ.get('DB_PATH', os.path.join(os.path.dirname(__file__), 'album.db'))
 
 
 def _connect():
@@ -61,6 +61,19 @@ def init():
                 face_count INTEGER NOT NULL DEFAULT 1
             )
         ''')
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS luts (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                album_id    TEXT    NOT NULL,
+                name        TEXT    NOT NULL,
+                npy_path    TEXT    NOT NULL,
+                grid_size   INTEGER NOT NULL,
+                uploaded_at TEXT    NOT NULL,
+                category    TEXT    NOT NULL DEFAULT '',
+                is_builtin  INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY(album_id) REFERENCES albums(id)
+            )
+        ''')
         conn.commit()
         # Indexes for hot queries
         for idx in [
@@ -80,6 +93,8 @@ def init():
             'ALTER TABLE faces   ADD COLUMN person_id INTEGER',
             'ALTER TABLE faces   ADD COLUMN match_confidence TEXT',
             'ALTER TABLE people  ADD COLUMN name TEXT',
+            "ALTER TABLE luts    ADD COLUMN category TEXT NOT NULL DEFAULT ''",
+            'ALTER TABLE luts    ADD COLUMN is_builtin INTEGER NOT NULL DEFAULT 0',
         ]:
             try:
                 conn.execute(stmt)
@@ -258,7 +273,7 @@ def get_all_album_faces(album_id):
     conn = _connect()
     try:
         rows = conn.execute('''
-            SELECT f.id, f.photo_id, f.crop_url, f.embedding
+            SELECT f.id, f.photo_id, f.crop_url, f.embedding, f.person_id, f.match_confidence
             FROM faces f
             JOIN photos p ON f.photo_id = p.id
             WHERE p.album_id = ?
@@ -273,7 +288,8 @@ def get_faces(photo_id):
     conn = _connect()
     try:
         face_rows = conn.execute(
-            'SELECT id, crop_url FROM faces WHERE photo_id=?', (photo_id,)
+            'SELECT id, crop_url, person_id FROM faces WHERE photo_id=?',
+            (photo_id,)
         ).fetchall()
         result = []
         for f in face_rows:
@@ -285,6 +301,7 @@ def get_faces(photo_id):
                 'id':          f['id'],
                 'crop_url':    f['crop_url'],
                 'tagged_name': tag['name'] if tag else None,
+                'person_id':   f['person_id'],
             })
         return result
     finally:
@@ -372,5 +389,67 @@ def get_photos_for_person(person_id, confidence=None):
                 'SELECT DISTINCT photo_id FROM faces WHERE person_id=?', (person_id,)
             ).fetchall()
         return [r['photo_id'] for r in rows]
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# LUTs
+# ---------------------------------------------------------------------------
+
+def add_lut(album_id, name, npy_path, grid_size, uploaded_at,
+            category='', is_builtin=0):
+    conn = _connect()
+    try:
+        cur = conn.execute(
+            'INSERT INTO luts (album_id, name, npy_path, grid_size, uploaded_at, category, is_builtin) '
+            'VALUES (?,?,?,?,?,?,?)',
+            (album_id, name, npy_path, grid_size, uploaded_at, category, is_builtin)
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def get_luts(album_id):
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            'SELECT id, name, grid_size, uploaded_at, category, is_builtin '
+            'FROM luts WHERE album_id=? AND is_builtin=0 ORDER BY id ASC',
+            (album_id,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_builtin_luts():
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            'SELECT id, name, grid_size, category, is_builtin '
+            'FROM luts WHERE is_builtin=1 ORDER BY category ASC, name ASC'
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def has_builtin_luts():
+    conn = _connect()
+    try:
+        row = conn.execute('SELECT COUNT(*) FROM luts WHERE is_builtin=1').fetchone()
+        return row[0] > 0
+    finally:
+        conn.close()
+
+
+def get_lut(lut_id):
+    conn = _connect()
+    try:
+        row = conn.execute('SELECT * FROM luts WHERE id=?', (lut_id,)).fetchone()
+        return dict(row) if row else None
     finally:
         conn.close()

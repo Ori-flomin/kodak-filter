@@ -1,13 +1,16 @@
-from flask import Flask, request, send_file, render_template, jsonify, abort
+from flask import Flask, request, send_file, send_from_directory, render_template, jsonify, abort
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 import numpy as np
 from io import BytesIO
 import os
 import secrets
 import string
+import threading
+import urllib.request
 from datetime import datetime
 import qrcode
 import db
+import lut as lut_module
 
 _BASE        = os.path.dirname(__file__)
 _DET_MODEL   = os.path.join(_BASE, 'det_500m.onnx')    # SCRFD face detector
@@ -16,9 +19,10 @@ _REC_MODEL   = os.path.join(_BASE, 'w600k_mbf.onnx')   # ArcFace MobileNet
 _det_session = None
 _rec_session = None
 _EMB_BYTES        = 512 * 4   # 512-dim float32
-_ASSIGN_THRESHOLD = 0.55      # ArcFace: same person > 0.5, different < 0.3
-_MAYBE_THRESHOLD  = 0.42      # [_MAYBE_THRESHOLD, _ASSIGN_THRESHOLD) = uncertain
-_SEARCH_THRESHOLD = 0.45      # slightly looser for query-time recall
+_ASSIGN_THRESHOLD = 0.53
+_MAYBE_THRESHOLD  = 0.46
+_FACE_SEARCH_THRESHOLD   = 0.50
+_PERSON_SEARCH_THRESHOLD = 0.43
 
 
 def _get_sessions():
@@ -252,7 +256,7 @@ limiter = Limiter(get_remote_address, app=app, default_limits=[],
 ALBUM_DIR = os.path.join(os.path.dirname(__file__), 'static', 'album')
 os.makedirs(ALBUM_DIR, exist_ok=True)
 
-ALBUMS_DIR = os.path.join(os.path.dirname(__file__), 'static', 'albums')
+ALBUMS_DIR = os.environ.get('ALBUMS_DIR', os.path.join(os.path.dirname(__file__), 'static', 'albums'))
 os.makedirs(ALBUMS_DIR, exist_ok=True)
 
 # Magic bytes for allowed image types
@@ -281,6 +285,97 @@ def _make_thumbnail(img: 'Image.Image', max_w: int = 900) -> 'Image.Image':
     return img.resize((max_w, int(h * max_w / w)), Image.LANCZOS)
 
 db.init()
+
+# ---------------------------------------------------------------------------
+# Built-in t3mujinpack Hald CLUT LUTs
+# ---------------------------------------------------------------------------
+
+_BUILTIN_LUTS_DIR = os.path.join(_BASE, 'static', 'luts', 'builtin')
+_GITHUB_RAW = 'https://raw.githubusercontent.com/t3mujinpack/t3mujinpack/master/haldcluts/'
+
+_BUILTIN_LUT_FILES = [
+    ('Black & White',   't3mujinpack - Black and White - AGFA APX 100.png'),
+    ('Black & White',   't3mujinpack - Black and White - AGFA APX 25.png'),
+    ('Black & White',   't3mujinpack - Black and White - Fuji Neopan 1600.png'),
+    ('Black & White',   't3mujinpack - Black and White - Fuji Neopan Acros 100.png'),
+    ('Black & White',   't3mujinpack - Black and White - Ilford Delta 100.png'),
+    ('Black & White',   't3mujinpack - Black and White - Ilford Delta 3200.png'),
+    ('Black & White',   't3mujinpack - Black and White - Ilford Delta 400.png'),
+    ('Black & White',   't3mujinpack - Black and White - Ilford FP4 125.png'),
+    ('Black & White',   't3mujinpack - Black and White - Ilford HP5 Plus 400.png'),
+    ('Black & White',   't3mujinpack - Black and White - Ilford XP2.png'),
+    ('Black & White',   't3mujinpack - Black and White - Kodak T-Max 3200.png'),
+    ('Black & White',   't3mujinpack - Black and White - Kodak Tri-X 400.png'),
+    ('Color Negative',  't3mujinpack - Color Negative - Agfa Vista 100.png'),
+    ('Color Negative',  't3mujinpack - Color Negative - Agfa Vista 200.png'),
+    ('Color Negative',  't3mujinpack - Color Negative - Agfa Vista 400.png'),
+    ('Color Negative',  't3mujinpack - Color Negative - Fuji Pro 160C.png'),
+    ('Color Negative',  't3mujinpack - Color Negative - Fuji Pro 400H.png'),
+    ('Color Negative',  't3mujinpack - Color Negative - Fuji Pro 800Z.png'),
+    ('Color Negative',  't3mujinpack - Color Negative - Fuji Superia 100.png'),
+    ('Color Negative',  't3mujinpack - Color Negative - Fuji Superia 1600.png'),
+    ('Color Negative',  't3mujinpack - Color Negative - Fuji Superia 200.png'),
+    ('Color Negative',  't3mujinpack - Color Negative - Fuji Superia 400.png'),
+    ('Color Negative',  't3mujinpack - Color Negative - Fuji Superia 800.png'),
+    ('Color Negative',  't3mujinpack - Color Negative - Fuji Superia HG 1600.png'),
+    ('Color Negative',  't3mujinpack - Color Negative - Kodak ColorPlus 200.png'),
+    ('Color Negative',  't3mujinpack - Color Negative - Kodak Ektar 100.png'),
+    ('Color Negative',  't3mujinpack - Color Negative - Kodak Gold 200.png'),
+    ('Color Negative',  't3mujinpack - Color Negative - Kodak Portra 160 NC.png'),
+    ('Color Negative',  't3mujinpack - Color Negative - Kodak Portra 160 VC.png'),
+    ('Color Negative',  't3mujinpack - Color Negative - Kodak Portra 160.png'),
+    ('Color Negative',  't3mujinpack - Color Negative - Kodak Portra 400 NC.png'),
+    ('Color Negative',  't3mujinpack - Color Negative - Kodak Portra 400 UC.png'),
+    ('Color Negative',  't3mujinpack - Color Negative - Kodak Portra 400 VC.png'),
+    ('Color Negative',  't3mujinpack - Color Negative - Kodak Portra 400.png'),
+    ('Color Negative',  't3mujinpack - Color Negative - Kodak Portra 800.png'),
+    ('Color Negative',  't3mujinpack - Color Negative - Kodak Ultra Max 400.png'),
+    ('Color Slide',     't3mujinpack - Color Slide - Fuji Astia 100F.png'),
+    ('Color Slide',     't3mujinpack - Color Slide - Fuji Fortia SP 50.png'),
+    ('Color Slide',     't3mujinpack - Color Slide - Fuji Provia 100F.png'),
+    ('Color Slide',     't3mujinpack - Color Slide - Fuji Provia 400F.png'),
+    ('Color Slide',     't3mujinpack - Color Slide - Fuji Provia 400X.png'),
+    ('Color Slide',     't3mujinpack - Color Slide - Fuji Sensia 100.png'),
+    ('Color Slide',     't3mujinpack - Color Slide - Fuji Velvia 100.png'),
+    ('Color Slide',     't3mujinpack - Color Slide - Fuji Velvia 50.png'),
+    ('Color Slide',     't3mujinpack - Color Slide - Kodak Ektachrome 100 G.png'),
+    ('Color Slide',     't3mujinpack - Color Slide - Kodak Ektachrome 100 GX.png'),
+    ('Color Slide',     't3mujinpack - Color Slide - Kodak Ektachrome 100 VS.png'),
+    ('Color Slide',     't3mujinpack - Color Slide - Kodak Elite Chrome 400.png'),
+    ('Color Slide',     't3mujinpack - Color Slide - Kodak Kodakchrome 200.png'),
+    ('Color Slide',     't3mujinpack - Color Slide - Kodak Kodakchrome 25.png'),
+    ('Color Slide',     't3mujinpack - Color Slide - Kodak Kodakchrome 64.png'),
+]
+
+
+def _lut_display_name(filename):
+    """'t3mujinpack - Color Negative - Kodak Portra 400.png' → 'Kodak Portra 400'"""
+    parts = filename.replace('.png', '').split(' - ', 2)
+    return parts[2] if len(parts) == 3 else filename.replace('.png', '')
+
+
+def _bootstrap_builtin_luts():
+    if db.has_builtin_luts():
+        return
+    os.makedirs(_BUILTIN_LUTS_DIR, exist_ok=True)
+    uploaded_at = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+    for category, filename in _BUILTIN_LUT_FILES:
+        png_path = os.path.join(_BUILTIN_LUTS_DIR, filename)
+        try:
+            if not os.path.isfile(png_path):
+                url = _GITHUB_RAW + urllib.request.quote(filename)
+                urllib.request.urlretrieve(url, png_path)
+            # Validate by parsing (also warms the cache)
+            size, _ = lut_module.parse_hald_png(open(png_path, 'rb').read())
+            name = _lut_display_name(filename)
+            db.add_lut('__builtin__', name, png_path, size, uploaded_at,
+                       category=category, is_builtin=1)
+            print(f'[LUT] registered: {name}')
+        except Exception as e:
+            print(f'[LUT] skipped {filename}: {e}')
+
+
+threading.Thread(target=_bootstrap_builtin_luts, daemon=True).start()
 
 # ---------------------------------------------------------------------------
 # Core film physics primitives
@@ -411,6 +506,49 @@ def _s_curve_lut(strength=0.18):
     return [curve(v) for v in range(256)]
 
 
+def apply_reference_film_grade(img, warmth=1.0, fade=1.0, grain=18, saturation=0.96):
+    """
+    Film-style baseline inspired by the Miss Rover article:
+    warmer WB, lifted shadows, lower contrast, teal-ish greens,
+    orange-leaning reds, and subtle grain.
+    """
+    img = img.convert('RGB')
+    img = lift_shadows(
+        img,
+        r=int(16 * fade),
+        g=int(14 * fade),
+        b=int(10 * fade),
+    )
+    img = apply_film_toe(img, toe=0.08 + 0.03 * fade, lift=0.03 + 0.03 * fade)
+    img = apply_film_shoulder(img, start=0.78, strength=0.66)
+
+    arr = np.array(img, dtype=np.float32)
+    arr = _boost_saturation(arr, saturation)
+    arr[:, :, 0] = np.clip(arr[:, :, 0] * (1.03 + 0.04 * warmth), 0, 255)
+    arr[:, :, 1] = np.clip(arr[:, :, 1] * (1.01 + 0.02 * warmth), 0, 255)
+    arr[:, :, 2] = np.clip(arr[:, :, 2] * (0.98 - 0.04 * warmth), 0, 255)
+
+    r = arr[:, :, 0]
+    g = arr[:, :, 1]
+    b = arr[:, :, 2]
+    green_mask = ((g > r) & (g > b)).astype(np.float32)
+    red_mask = ((r > g) & (r > b)).astype(np.float32)
+
+    # Push foliage toward teal while keeping it soft.
+    arr[:, :, 1] = np.clip(arr[:, :, 1] - green_mask * 7, 0, 255)
+    arr[:, :, 2] = np.clip(arr[:, :, 2] + green_mask * 7, 0, 255)
+
+    # Push reds a little warmer/oranger.
+    arr[:, :, 0] = np.clip(arr[:, :, 0] + red_mask * 5, 0, 255)
+    arr[:, :, 1] = np.clip(arr[:, :, 1] + red_mask * 6, 0, 255)
+    arr[:, :, 2] = np.clip(arr[:, :, 2] - red_mask * 4, 0, 255)
+
+    img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+    img = add_channel_blur(img, blue_radius=1.0)
+    img = add_film_grain(img, intensity=grain)
+    return img
+
+
 # ---------------------------------------------------------------------------
 # Style 1: Kodak Gold 200
 # ---------------------------------------------------------------------------
@@ -448,8 +586,7 @@ def apply_kodak_gold(img):
 
     img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
     img = add_halation(img, strength=0.16, radius=16)
-    img = add_channel_blur(img)
-    img = add_film_grain(img, intensity=17)
+    img = apply_reference_film_grade(img, warmth=1.05, fade=0.95, grain=18, saturation=1.02)
     img = add_vignette(img, strength=0.52, feather=0.42)
     return img
 
@@ -530,8 +667,7 @@ def apply_vintage_70s(img):
 
     img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
     img = add_halation(img, strength=0.20, radius=20)
-    img = add_channel_blur(img, blue_radius=1.2)
-    img = add_film_grain(img, intensity=14)
+    img = apply_reference_film_grade(img, warmth=1.15, fade=1.20, grain=20, saturation=0.92)
     img = add_vignette(img, strength=0.36, feather=0.50)
     return img
 
@@ -562,8 +698,7 @@ def apply_cinematic(img):
 
     img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
     img = add_halation(img, strength=0.10, radius=12)
-    img = add_channel_blur(img)
-    img = add_film_grain(img, intensity=19)
+    img = apply_reference_film_grade(img, warmth=0.65, fade=0.70, grain=17, saturation=0.95)
     img = add_vignette(img, strength=0.58, feather=0.35)
     return img
 
@@ -597,8 +732,7 @@ def apply_fuji_velvia(img):
     img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
     lut = _s_curve_lut(0.14)
     img = Image.merge('RGB', [b.point(lut) for b in img.split()])
-    # No channel blur — Velvia is razor-sharp
-    img = add_film_grain(img, intensity=5)
+    img = apply_reference_film_grade(img, warmth=0.70, fade=0.45, grain=8, saturation=1.08)
     img = add_vignette(img, strength=0.42, feather=0.48)
     return img
 
@@ -630,9 +764,8 @@ def apply_portra_400(img):
     arr[:, :, 2] = np.clip(arr[:, :, 2] + shadow * 8, 0, 255)
 
     img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
-    img = add_halation(img, strength=0.13, radius=18)   # beautiful soft halation
-    img = add_channel_blur(img, blue_radius=1.0)
-    img = add_film_grain(img, intensity=11)
+    img = add_halation(img, strength=0.13, radius=18)
+    img = apply_reference_film_grade(img, warmth=0.95, fade=1.05, grain=16, saturation=0.93)
     img = add_vignette(img, strength=0.30, feather=0.55)
     return img
 
@@ -737,43 +870,59 @@ def add_film_border(img):
 # ---------------------------------------------------------------------------
 
 STYLES = {
-    'original':    (lambda img: img.convert('RGB'), 'original.jpg'),
-    'kodak-gold':  (apply_kodak_gold,  'kodak_gold.jpg'),
-    'trix-bw':     (apply_trix_bw,     'trix_bw.jpg'),
-    'vintage-70s': (apply_vintage_70s, 'vintage_70s.jpg'),
-    'cinematic':   (apply_cinematic,   'cinematic.jpg'),
-    'fuji-velvia': (apply_fuji_velvia, 'fuji_velvia.jpg'),
-    'portra-400':  (apply_portra_400,  'portra_400.jpg'),
-    'ilford-hp5':  (apply_ilford_hp5,  'ilford_hp5.jpg'),
+    'portra-400':  (apply_portra_400,   'portra_400.jpg'),
+    'kodak-gold':  (apply_kodak_gold,   'kodak_gold.jpg'),
+    'trix-bw':     (apply_trix_bw,      'trix_bw.jpg'),
+    'vintage-70s': (apply_vintage_70s,  'vintage_70s.jpg'),
+    'cinematic':   (apply_cinematic,    'cinematic.jpg'),
+    'fuji-velvia': (apply_fuji_velvia,  'fuji_velvia.jpg'),
+    'ilford-hp5':  (apply_ilford_hp5,   'ilford_hp5.jpg'),
 }
 
 STYLE_NAMES = {
-    'original':    'Original',
+    'portra-400':  'Portra 400',
     'kodak-gold':  'Kodak Gold',
     'trix-bw':     'Tri-X B&W',
     'vintage-70s': 'Vintage 70s',
     'cinematic':   'Cinematic',
     'fuji-velvia': 'Fuji Velvia',
-    'portra-400':  'Portra 400',
     'ilford-hp5':  'Ilford HP5',
 }
 
 
-def apply_filter(img, style='kodak-gold', intensity=100,
-                 light_leak=False, date_stamp=False, film_border=False):
+def apply_filter(img, style='portra-400', intensity=100,
+                 light_leak=False, date_stamp=False, film_border=False,
+                 lut_id=None, lut_strength=100):
     original = img.convert('RGB')
-    if style == 'original':
-        return original
 
-    fn, _ = STYLES.get(style, STYLES['kodak-gold'])
-    result = fn(img)
+    if lut_id is not None:
+        lut_info = db.get_lut(lut_id)
+        if lut_info and os.path.isfile(lut_info['npy_path']):
+            # LUT mode: apply to original (neutral) image so the film color
+            # is accurate, then layer authentic physical film texture on top.
+            path = lut_info['npy_path']
+            lut_3d = (lut_module.load_hald_png(path) if path.endswith('.png')
+                      else np.load(path))
+            arr = np.array(original, dtype=np.uint8)
+            arr = lut_module.apply_lut(arr, lut_3d, strength=lut_strength / 100.0)
+            result = Image.fromarray(arr)
+            # Halation + grain + vignette give the physical vintage film feel
+            result = add_halation(result, strength=0.11, radius=14)
+            result = add_film_grain(result, intensity=17)
+            result = add_vignette(result, strength=0.38, feather=0.50)
+        else:
+            fn, _ = STYLES.get(style, STYLES['portra-400'])
+            result = fn(original)
+    else:
+        fn, _ = STYLES.get(style, STYLES['portra-400'])
+        result = fn(original)
 
-    if intensity < 100:
-        orig_arr   = np.array(original,  dtype=np.float32)
-        result_arr = np.array(result,    dtype=np.float32)
-        alpha = intensity / 100.0
-        result = Image.fromarray(
-            (orig_arr * (1 - alpha) + result_arr * alpha).astype(np.uint8))
+        if intensity < 100:
+            orig_arr   = np.array(original,  dtype=np.float32)
+            result_arr = np.array(result,    dtype=np.float32)
+            alpha = intensity / 100.0
+            result = Image.fromarray(
+                (orig_arr * (1 - alpha) + result_arr * alpha).astype(np.uint8))
 
     if light_leak:
         result = add_light_leak(result)
@@ -801,7 +950,7 @@ def _parse_request():
     file = request.files['image']
     if file.filename == '':
         return None, None, None, ('No file selected', 400)
-    style = request.form.get('style', 'kodak-gold')
+    style = request.form.get('style', 'portra-400')
     if style not in STYLES:
         return None, None, None, ('Unknown style', 400)
     opts = {
@@ -816,6 +965,11 @@ def _parse_request():
 # ---------------------------------------------------------------------------
 # Routes — new collaborative album feature
 # ---------------------------------------------------------------------------
+
+@app.route('/albums/<path:filename>')
+def serve_album_file(filename):
+    return send_from_directory(ALBUMS_DIR, filename)
+
 
 @app.route('/')
 def index():
@@ -877,6 +1031,80 @@ def album_exists(album_id):
     return jsonify({'exists': album_row is not None})
 
 
+@app.route('/a/<album_id>/luts')
+def album_luts(album_id):
+    if db.get_album(album_id) is None:
+        abort(404)
+    builtin = [dict(l, builtin=True)  for l in db.get_builtin_luts()]
+    custom  = [dict(l, builtin=False) for l in db.get_luts(album_id)]
+    return jsonify(builtin + custom)
+
+
+@app.route('/a/<album_id>/preview', methods=['POST'])
+@limiter.limit('60 per minute')
+def album_preview(album_id):
+    if db.get_album(album_id) is None:
+        abort(404)
+    if 'image' not in request.files:
+        return ('No image', 400)
+    raw = request.files['image'].read()
+    if not _validate_image_bytes(raw):
+        return ('Invalid image', 400)
+
+    style        = request.form.get('style', 'portra-400')
+    if style not in STYLES:
+        style = 'portra-400'
+    intensity    = int(request.form.get('intensity', 100))
+    light_leak   = request.form.get('light_leak', '0') == '1'
+    date_stamp   = request.form.get('date_stamp', '0') == '1'
+    film_border  = request.form.get('film_border', '0') == '1'
+    lut_id_raw   = request.form.get('lut_id', '')
+    lut_id       = int(lut_id_raw) if lut_id_raw.isdigit() else None
+    lut_strength = int(request.form.get('lut_strength', 100))
+
+    img    = Image.open(BytesIO(raw)).convert('RGB')
+    result = apply_filter(img, style, intensity=intensity,
+                          light_leak=light_leak, date_stamp=date_stamp,
+                          film_border=film_border,
+                          lut_id=lut_id, lut_strength=lut_strength)
+    result = _make_thumbnail(result, max_w=1200)
+    buf = BytesIO()
+    result.save(buf, format='JPEG', quality=85)
+    buf.seek(0)
+    return send_file(buf, mimetype='image/jpeg')
+
+
+@app.route('/a/<album_id>/upload-lut', methods=['POST'])
+@limiter.limit('10 per minute')
+def album_upload_lut(album_id):
+    if db.get_album(album_id) is None:
+        abort(404)
+    if 'lut_file' not in request.files:
+        return jsonify({'error': 'No lut_file field'}), 400
+    f = request.files['lut_file']
+    if not f.filename.lower().endswith('.cube'):
+        return jsonify({'error': 'Only .cube files are supported'}), 400
+
+    raw = f.read()
+    try:
+        size, lut_3d = lut_module.parse_cube(raw)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
+    luts_dir = os.path.join(ALBUMS_DIR, album_id, 'luts')
+    os.makedirs(luts_dir, exist_ok=True)
+
+    lut_name    = os.path.splitext(f.filename)[0]
+    token       = secrets.token_hex(8)
+    npy_path    = os.path.join(luts_dir, f'{token}.npy')
+    np.save(npy_path, lut_3d)
+
+    uploaded_at = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+    lut_id      = db.add_lut(album_id, lut_name, npy_path, size, uploaded_at)
+
+    return jsonify({'id': lut_id, 'name': lut_name, 'grid_size': size})
+
+
 @app.route('/a/<album_id>/upload', methods=['POST'])
 @limiter.limit('20 per minute')
 def album_upload(album_id):
@@ -894,7 +1122,7 @@ def album_upload(album_id):
     if not _validate_image_bytes(raw):
         return jsonify({'error': 'Invalid image format'}), 400
 
-    style = request.form.get('style', 'kodak-gold')
+    style = request.form.get('style', 'portra-400')
     if style not in STYLES:
         return jsonify({'error': 'Unknown style'}), 400
 
@@ -903,11 +1131,15 @@ def album_upload(album_id):
     light_leak   = request.form.get('light_leak', '0') == '1'
     date_stamp   = request.form.get('date_stamp', '0') == '1'
     film_border  = request.form.get('film_border', '0') == '1'
+    lut_id_raw   = request.form.get('lut_id', '')
+    lut_id       = int(lut_id_raw) if lut_id_raw.isdigit() else None
+    lut_strength = int(request.form.get('lut_strength', 100))
 
     original = Image.open(BytesIO(raw)).convert('RGB')
     result   = apply_filter(original, style, intensity=intensity,
                             light_leak=light_leak, date_stamp=date_stamp,
-                            film_border=film_border)
+                            film_border=film_border,
+                            lut_id=lut_id, lut_strength=lut_strength)
 
     ts       = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
     filename = f'{ts}_{style}.jpg'
@@ -929,8 +1161,8 @@ def album_upload(album_id):
     # Detect faces & compute embeddings from the original (pre-filter) image
     _detect_faces(photo_id, album_id, filename, pil_img=original)
 
-    photo_url = f'/static/albums/{album_id}/{filename}'
-    thumb_url = f'/static/albums/{album_id}/thumbs/{filename}'
+    photo_url = f'/albums/{album_id}/{filename}'
+    thumb_url = f'/albums/{album_id}/thumbs/{filename}'
     return jsonify({
         'id':          photo_id,
         'url':         photo_url,
@@ -990,7 +1222,7 @@ def _detect_faces(photo_id, album_id, filename, pil_img=None):
         crop      = _face_crop(pil_img, bbox, kps, size=88)
         fname     = f'face_{photo_id}_{i}.jpg'
         crop.save(os.path.join(faces_dir, fname), 'JPEG', quality=85)
-        url       = f'/static/albums/{album_id}/faces/{fname}'
+        url       = f'/albums/{album_id}/faces/{fname}'
         embedding = _arcface_embed(pil_img, kps)
         face_id   = db.add_face(photo_id, url, embedding=embedding)
         if embedding is not None:
@@ -1027,6 +1259,20 @@ def _assign_to_person(album_id, face_id, emb_bytes):
     """
     emb     = np.frombuffer(emb_bytes, dtype=np.float32)
     persons = db.get_all_persons(album_id)
+    faces   = db.get_all_album_faces(album_id)
+
+    face_best_by_person = {}
+    for face in faces:
+        person_id = face.get('person_id')
+        raw = face.get('embedding')
+        if not person_id or not raw or len(raw) != _EMB_BYTES:
+            continue
+        if face['id'] == face_id or face.get('match_confidence') == 'maybe':
+            continue
+        other_emb = np.frombuffer(bytes(raw), dtype=np.float32)
+        sim = float(np.dot(emb, other_emb))
+        if sim > face_best_by_person.get(person_id, -1.0):
+            face_best_by_person[person_id] = sim
 
     best_id  = None
     best_sim = -1.0
@@ -1036,7 +1282,9 @@ def _assign_to_person(album_id, face_id, emb_bytes):
         if not raw or len(raw) != _EMB_BYTES:
             continue
         centroid = np.frombuffer(bytes(raw), dtype=np.float32)
-        sim = float(np.dot(emb, centroid))
+        centroid_sim = float(np.dot(emb, centroid))
+        exemplar_sim = face_best_by_person.get(p['id'], -1.0)
+        sim = max(centroid_sim, exemplar_sim)
         if sim > best_sim:
             best_sim = sim
             best_id  = p['id']
@@ -1062,21 +1310,36 @@ def _assign_to_person(album_id, face_id, emb_bytes):
         db.assign_face_person(face_id, person_id, confidence='confirmed')
 
 
-def _search_by_centroid(q_emb, album_id, always_include_photo_id=None):
+def _search_album(q_emb, album_id, always_include_photo_id=None):
     """
-    Compare query embedding against person centroids (not individual faces).
-    Returns the union of photo_ids from all matching clusters.
+    Search both individual faces and person centroids for better recall/precision.
     """
-    persons = db.get_all_persons(album_id)
     matched = set()
     if always_include_photo_id is not None:
         matched.add(always_include_photo_id)
-    for p in persons:
+
+    face_best_by_person = {}
+    for face in db.get_all_album_faces(album_id):
+        raw = face.get('embedding')
+        if not raw or len(raw) != _EMB_BYTES:
+            continue
+        face_emb = np.frombuffer(bytes(raw), dtype=np.float32)
+        sim = float(np.dot(q_emb, face_emb))
+        if sim >= _FACE_SEARCH_THRESHOLD:
+            matched.add(face['photo_id'])
+            if face.get('person_id'):
+                prev = face_best_by_person.get(face['person_id'], -1.0)
+                if sim > prev:
+                    face_best_by_person[face['person_id']] = sim
+
+    for p in db.get_all_persons(album_id):
         raw = p['centroid']
         if not raw or len(raw) != _EMB_BYTES:
             continue
         centroid = np.frombuffer(bytes(raw), dtype=np.float32)
-        if float(np.dot(q_emb, centroid)) >= _SEARCH_THRESHOLD:
+        centroid_sim = float(np.dot(q_emb, centroid))
+        exemplar_sim = face_best_by_person.get(p['id'], -1.0)
+        if max(centroid_sim, exemplar_sim) >= _PERSON_SEARCH_THRESHOLD:
             matched.update(db.get_photos_for_person(p['id']))
     return matched
 
@@ -1090,8 +1353,8 @@ def search_by_face(album_id, face_id):
         return jsonify({'crop_url': None, 'photo_ids': []})
 
     q_emb   = np.frombuffer(bytes(query_face['embedding']), dtype=np.float32)
-    matched = _search_by_centroid(q_emb, album_id,
-                                  always_include_photo_id=query_face['photo_id'])
+    matched = _search_album(q_emb, album_id,
+                            always_include_photo_id=query_face['photo_id'])
     return jsonify({
         'crop_url':  query_face['crop_url'],
         'photo_ids': list(matched),
@@ -1111,7 +1374,7 @@ def search_by_uploaded_face(album_id):
         return jsonify({'error': 'Face detection not available'}), 503
 
     pil_img    = Image.open(BytesIO(request.files['image'].read())).convert('RGB')
-    detections = _detect_faces_in_img(pil_img)
+    detections = [d for d in _detect_faces_in_img(pil_img) if _is_quality_face(*d)]
 
     if not detections:
         return jsonify({'error': 'No face detected in your photo. Try a clearer front-facing shot.'}), 422
@@ -1123,7 +1386,7 @@ def search_by_uploaded_face(album_id):
     if emb is None:
         return jsonify({'error': 'Could not compute face embedding'}), 500
     q_emb   = np.frombuffer(emb, dtype=np.float32)
-    matched = _search_by_centroid(q_emb, album_id)
+    matched = _search_album(q_emb, album_id)
 
     # Return the crop as a data URL so the browser can show it in the filter bar
     import base64
