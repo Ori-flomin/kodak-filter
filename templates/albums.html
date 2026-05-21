@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>All Albums</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: #f5f0e8; color: #1a1208; min-height: 100vh; padding: 24px 16px; }
+    h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 20px; }
+    a { color: inherit; text-decoration: none; }
+    .back { font-size: 0.85rem; color: #7a6a50; margin-bottom: 16px; display: inline-block; }
+    .back:hover { text-decoration: underline; }
+    .album-list { display: flex; flex-direction: column; gap: 10px; max-width: 600px; }
+    .album-card {
+      background: #fff; border-radius: 12px; padding: 14px 16px;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+      transition: box-shadow 0.15s;
+    }
+    .album-card:hover { box-shadow: 0 3px 10px rgba(0,0,0,0.12); }
+    .album-info { flex: 1; min-width: 0; }
+    .album-name { font-weight: 600; font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .album-meta { font-size: 0.78rem; color: #7a6a50; margin-top: 3px; }
+    .album-id { font-family: monospace; font-size: 0.85rem; background: #f5f0e8; padding: 3px 8px; border-radius: 6px; color: #5a4a30; flex-shrink: 0; }
+    .photo-count { font-size: 0.8rem; color: #7a6a50; flex-shrink: 0; }
+    .open-btn {
+      background: #f5c842; color: #1a1208; border: none; border-radius: 8px;
+      padding: 7px 14px; font-size: 0.82rem; font-weight: 600; cursor: pointer; flex-shrink: 0;
+    }
+    .open-btn:hover { background: #e0b030; }
+    .empty { color: #7a6a50; font-size: 0.9rem; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <a class="back" href="/">← Home</a>
+  <h1>All Albums</h1>
+  <div class="album-list">
+    {% if albums %}
+      {% for album in albums %}
+      <a class="album-card" href="/a/{{ album.id }}">
+        <div class="album-info">
+          <div class="album-name">{{ album.name }}</div>
+          <div class="album-meta">{{ album.created_at[:10] }} &middot; <span class="album-id">{{ album.id }}</span></div>
+        </div>
+        <div class="photo-count">{{ album.photo_count }} photo{% if album.photo_count != 1 %}s{% endif %}</div>
+        <div class="open-btn">Open</div>
+      </a>
+      {% endfor %}
+    {% else %}
+      <p class="empty">No albums yet. <a href="/" style="color:#5a4a30;text-decoration:underline">Create one</a>.</p>
+    {% endif %}
+  </div>
+</body>
+</html>

@@ -127,6 +127,20 @@ def get_album(id):
         conn.close()
 
 
+def list_albums():
+    conn = _connect()
+    try:
+        return conn.execute('''
+            SELECT a.id, a.name, a.created_at, COUNT(p.id) AS photo_count
+            FROM albums a
+            LEFT JOIN photos p ON p.album_id = a.id
+            GROUP BY a.id
+            ORDER BY a.created_at DESC
+        ''').fetchall()
+    finally:
+        conn.close()
+
+
 # ---------------------------------------------------------------------------
 # Photos
 # ---------------------------------------------------------------------------

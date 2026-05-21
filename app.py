@@ -1006,6 +1006,12 @@ def index():
     return render_template('home.html')
 
 
+@app.route('/albums')
+def list_albums():
+    albums = db.list_albums()
+    return render_template('albums.html', albums=albums)
+
+
 @app.route('/create', methods=['POST'])
 def create_album():
     album_name = request.form.get('album_name', '').strip()
