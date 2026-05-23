@@ -222,13 +222,15 @@ def _umeyama(src, dst):
 
 def _warp_face(pil_img, kps, out=112):
     """Warp face to ArcFace canonical 112×112 frame using 5 SCRFD keypoints."""
-    import cv2
     src = np.array(kps[:5], dtype=np.float32)
     M   = _umeyama(src, _ARCFACE_DST)
-    bgr = np.array(pil_img)[:, :, ::-1]           # PIL RGB → OpenCV BGR
-    aligned = cv2.warpAffine(bgr, M, (out, out), flags=cv2.INTER_LINEAR,
-                              borderMode=cv2.BORDER_REFLECT)
-    return aligned   # BGR uint8, 112×112
+    # PIL AFFINE expects the INVERSE transform (output→input mapping)
+    M3  = np.vstack([M, [0.0, 0.0, 1.0]])
+    Mi  = np.linalg.inv(M3)[:2]
+    data = (float(Mi[0,0]), float(Mi[0,1]), float(Mi[0,2]),
+            float(Mi[1,0]), float(Mi[1,1]), float(Mi[1,2]))
+    aligned_rgb = pil_img.transform((out, out), Image.AFFINE, data, Image.BILINEAR)
+    return np.array(aligned_rgb)[:, :, ::-1]  # RGB → BGR (ArcFace input convention)
 
 
 def _arcface_embed(pil_img, kps):
@@ -1273,7 +1275,11 @@ def search_by_uploaded_face(album_id):
     # Use the largest detected face
     largest_bbox, largest_kps = max(detections, key=lambda d: (d[0][2]-d[0][0]) * (d[0][3]-d[0][1]))
     crop  = _face_crop(pil_img, largest_bbox, largest_kps, size=88)
-    emb   = _arcface_embed(pil_img, largest_kps)
+    try:
+        emb = _arcface_embed(pil_img, largest_kps)
+    except Exception as e:
+        print(f'[search-by-face] embed error: {e}', flush=True)
+        emb = None
     if emb is None:
         return jsonify({'error': 'Could not compute face embedding'}), 500
     q_emb   = np.frombuffer(emb, dtype=np.float32)
@@ -1312,6 +1318,26 @@ def album_people(album_id):
             'photo_ids':   total_photos,
         })
     return jsonify({'people': result})
+
+
+@app.route('/a/<album_id>/reprocess-faces', methods=['POST'])
+def reprocess_faces(album_id):
+    """Reset and re-run face detection for every photo in the album."""
+    if db.get_album(album_id) is None:
+        abort(404)
+    db.reset_album_faces(album_id)
+    photos = db.get_photos(album_id)
+    for photo in photos:
+        pid = photo['id']
+        img_path = os.path.join(ALBUMS_DIR, album_id, photo['filename'])
+        if not os.path.isfile(img_path):
+            continue
+        threading.Thread(
+            target=_detect_faces,
+            args=(pid, album_id, photo['filename']),
+            daemon=True
+        ).start()
+    return jsonify({'ok': True, 'queued': len(photos)})
 
 
 @app.route('/a/<album_id>/delete/<int:photo_id>', methods=['POST'])

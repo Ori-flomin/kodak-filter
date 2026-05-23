@@ -392,3 +392,25 @@ def get_photos_for_person(person_id, confidence=None):
         conn.close()
 
 
+def reset_album_faces(album_id):
+    """Delete all face/person data for an album and reset faces_detected flags."""
+    conn = _connect()
+    try:
+        conn.execute('''
+            DELETE FROM faces WHERE photo_id IN (
+                SELECT id FROM photos WHERE album_id=?
+            )
+        ''', (album_id,))
+        conn.execute('DELETE FROM people WHERE album_id=?', (album_id,))
+        conn.execute('''
+            UPDATE photos SET faces_detected=0 WHERE album_id=?
+        ''', (album_id,))
+        conn.execute('''
+            DELETE FROM tags WHERE face_id IS NOT NULL AND photo_id IN (
+                SELECT id FROM photos WHERE album_id=?
+            )
+        ''', (album_id,))
+        conn.commit()
+    finally:
+        conn.close()
+

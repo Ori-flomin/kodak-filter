@@ -804,6 +804,14 @@
       transition: background 0.15s;
     }
     #lightbox-close:hover { background: rgba(255,255,255,0.2); color: #fff; }
+    #lightbox-save {
+      position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: rgba(255,255,255,0.15); backdrop-filter: blur(4px);
+      color: #fff; border: 1px solid rgba(255,255,255,0.3);
+      padding: 8px 20px; border-radius: 20px; font-size: 0.9rem; font-weight: 600;
+      cursor: pointer; transition: background 0.15s;
+    }
+    #lightbox-save:hover { background: rgba(255,255,255,0.25); }
 
     @media (max-width: 820px) {
       #album-hero { grid-template-columns: 1fr; }
@@ -875,6 +883,7 @@
   <!-- Lightbox -->
   <div id="lightbox" onclick="closeLightbox()">
     <button id="lightbox-close" onclick="closeLightbox()">&times;</button>
+    <button id="lightbox-save" onclick="event.stopPropagation();savePhoto(document.getElementById('lightbox-img').src)">&#8595; Save</button>
     <img id="lightbox-img" src="" alt="">
   </div>
 
@@ -1331,7 +1340,7 @@
         <div class="photo-meta">
           <div class="tags-row">
             <button class="tag-faces-btn" onclick="openFaceModal(${photo.id})">&#128100; Faces</button>
-            <a class="tag-save-btn" href="${escapeHtml(photo.url)}" download>&#8595; Save</a>
+            <button class="tag-save-btn" onclick="savePhoto('${escapeHtml(photo.url)}')">&#8595; Save</button>
           </div>
           ${textTags ? `<div class="photo-tags">${textTags}</div>` : ''}
         </div>`;
@@ -1581,6 +1590,29 @@
     // ---- Lightbox ----
     function openLightbox(url) { document.getElementById('lightbox-img').src = url; document.getElementById('lightbox').classList.add('open'); }
     function closeLightbox()   { document.getElementById('lightbox').classList.remove('open'); }
+
+    // ---- Save to device gallery ----
+    async function savePhoto(url) {
+      try {
+        const res  = await fetch(url);
+        const blob = await res.blob();
+        const name = url.split('/').pop() || 'photo.jpg';
+        const file = new File([blob], name, { type: blob.type || 'image/jpeg' });
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+          // iOS: opens share sheet → Save to Photos
+          await navigator.share({ files: [file], title: name });
+        } else {
+          // Desktop / Android: direct download
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = name;
+          a.click();
+          URL.revokeObjectURL(a.href);
+        }
+      } catch (e) {
+        if (e.name !== 'AbortError') alert('Could not save photo. Try long-pressing the image instead.');
+      }
+    }
 
     // ---- Share ----
     function openShareModal() {

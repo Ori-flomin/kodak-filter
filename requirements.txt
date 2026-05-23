@@ -2,7 +2,6 @@ flask
 pillow
 numpy
 qrcode[pil]
-opencv-python
 onnxruntime
 flask-limiter
 gunicorn
