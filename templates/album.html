@@ -1043,19 +1043,23 @@
     let previewAbort       = null;
     let previewDebounce    = null;
 
-    function resizeForPreview(file, maxW = 900) {
+    // Resize + convert to JPEG on canvas. Falls back to original file on any error.
+    function resizeImage(file, maxW) {
       return new Promise(resolve => {
         const url = URL.createObjectURL(file);
         const tmpImg = new Image();
         tmpImg.onload = () => {
+          URL.revokeObjectURL(url);
           const w = Math.min(tmpImg.naturalWidth, maxW);
           const h = Math.round(tmpImg.naturalHeight * w / tmpImg.naturalWidth);
           const c = document.createElement('canvas');
           c.width = w; c.height = h;
-          c.getContext('2d').drawImage(tmpImg, 0, 0, w, h);
-          URL.revokeObjectURL(url);
-          c.toBlob(resolve, 'image/jpeg', 0.88);
+          try {
+            c.getContext('2d').drawImage(tmpImg, 0, 0, w, h);
+            c.toBlob(blob => resolve(blob || file), 'image/jpeg', 0.9);
+          } catch (e) { resolve(file); }
         };
+        tmpImg.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
         tmpImg.src = url;
       });
     }
@@ -1211,7 +1215,7 @@
       document.getElementById('preview-badge').textContent = (STYLE_NAMES[selectedStyle] || selectedStyle) + '…';
       document.getElementById('add-to-album-btn').disabled = true;
 
-      const previewBlob = await resizeForPreview(currentFile);
+      const previewBlob = await resizeImage(currentFile, 900);
       const fd = new FormData();
       fd.append('image',       previewBlob, 'preview.jpg');
       fd.append('style',       selectedStyle);
@@ -1248,8 +1252,9 @@
       document.getElementById('saving-spinner').classList.add('visible');
       document.getElementById('upload-error').textContent = '';
 
+      const uploadBlob = await resizeImage(currentFile, 2400);
       const fd = new FormData();
-      fd.append('image',        currentFile);
+      fd.append('image',        uploadBlob, 'photo.jpg');
       fd.append('style',        selectedStyle);
       fd.append('uploaded_by',  myName);
       fd.append('intensity',    document.getElementById('intensity-slider').value);
