@@ -1043,6 +1043,23 @@
     let previewAbort       = null;
     let previewDebounce    = null;
 
+    function resizeForPreview(file, maxW = 900) {
+      return new Promise(resolve => {
+        const url = URL.createObjectURL(file);
+        const tmpImg = new Image();
+        tmpImg.onload = () => {
+          const w = Math.min(tmpImg.naturalWidth, maxW);
+          const h = Math.round(tmpImg.naturalHeight * w / tmpImg.naturalWidth);
+          const c = document.createElement('canvas');
+          c.width = w; c.height = h;
+          c.getContext('2d').drawImage(tmpImg, 0, 0, w, h);
+          URL.revokeObjectURL(url);
+          c.toBlob(resolve, 'image/jpeg', 0.88);
+        };
+        tmpImg.src = url;
+      });
+    }
+
     // Face modal state
     let faceModalPhotoId = null;
     let faceFilterPhotoIds = null;
@@ -1194,8 +1211,9 @@
       document.getElementById('preview-badge').textContent = (STYLE_NAMES[selectedStyle] || selectedStyle) + '…';
       document.getElementById('add-to-album-btn').disabled = true;
 
+      const previewBlob = await resizeForPreview(currentFile);
       const fd = new FormData();
-      fd.append('image',       currentFile);
+      fd.append('image',       previewBlob, 'preview.jpg');
       fd.append('style',       selectedStyle);
       fd.append('intensity',   document.getElementById('intensity-slider').value);
       fd.append('light_leak',  optLeak   ? '1' : '0');
