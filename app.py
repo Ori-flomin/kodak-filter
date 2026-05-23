@@ -1031,8 +1031,14 @@ def album_upload(album_id):
     uploaded_at = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
     photo_id    = db.add_photo(album_id, filename, style, uploaded_by, uploaded_at)
 
-    # Detect faces & compute embeddings from the original (pre-filter) image
-    _detect_faces(photo_id, album_id, filename, pil_img=original)
+    # Detect faces in background so any model/runtime failure doesn't break upload
+    _img_copy = original.copy()
+    threading.Thread(
+        target=_detect_faces,
+        args=(photo_id, album_id, filename),
+        kwargs={'pil_img': _img_copy},
+        daemon=True
+    ).start()
 
     photo_url = f'/albums/{album_id}/{filename}'
     thumb_url = f'/albums/{album_id}/thumbs/{filename}'
@@ -1074,6 +1080,18 @@ def album_tag(album_id):
 
 def _detect_faces(photo_id, album_id, filename, pil_img=None):
     """Run SCRFD detection + ArcFace embedding, save crops, store in DB."""
+    try:
+      return _detect_faces_impl(photo_id, album_id, filename, pil_img=pil_img)
+    except Exception as e:
+      print(f'[face-detect] error for photo {photo_id}: {e}', flush=True)
+      try:
+          db.mark_faces_detected(photo_id)
+      except Exception:
+          pass
+      return []
+
+
+def _detect_faces_impl(photo_id, album_id, filename, pil_img=None):
     if pil_img is None:
         photo_path = os.path.join(ALBUMS_DIR, album_id, filename)
         if not os.path.isfile(photo_path):
