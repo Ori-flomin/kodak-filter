@@ -3,9 +3,9 @@
 
 import os
 bind    = f'0.0.0.0:{os.environ.get("PORT", 5000)}'
-workers = 4          # good starting point: 2 × CPU cores + 1
-threads = 2          # each worker handles 2 concurrent requests
-timeout = 120        # face detection can take a few seconds
+workers = 2          # Railway hobby: 512 MB RAM — 4 workers OOM-kills on image processing
+threads = 2
+timeout = 120
 keepalive = 5
 
 # Logging
