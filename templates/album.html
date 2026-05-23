@@ -574,34 +574,6 @@
     }
     #intensity-val { font-size: 0.78rem; color: var(--dark); font-weight: 700; min-width: 36px; text-align: right; }
 
-    /* LUT controls */
-    #lut-wrap { margin-bottom: 12px; }
-    #lut-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-    #lut-select {
-      flex: 1; padding: 6px 8px; border-radius: 8px;
-      border: 1.5px solid var(--border); background: var(--cream);
-      font-size: 0.78rem; color: #4a3a24; cursor: pointer; outline: none;
-    }
-    #lut-upload-label {
-      padding: 6px 10px; border-radius: 8px; background: var(--cream);
-      border: 1.5px solid var(--border); font-size: 0.78rem; color: #4a3a24;
-      font-weight: 500; cursor: pointer; white-space: nowrap; user-select: none;
-    }
-    #lut-strength-row { display: flex; align-items: center; gap: 10px; }
-    #lut-strength-row label { font-size: 0.78rem; color: var(--muted); font-weight: 500; white-space: nowrap; min-width: 80px; }
-    #lut-strength-slider {
-      flex: 1; -webkit-appearance: none; appearance: none;
-      height: 4px; border-radius: 2px;
-      background: linear-gradient(to right, var(--yellow) 100%, #ddd 100%);
-      outline: none; cursor: pointer;
-    }
-    #lut-strength-slider::-webkit-slider-thumb {
-      -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
-      background: var(--yellow); border: 2.5px solid var(--dark); cursor: pointer;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.2);
-    }
-    #lut-strength-val { font-size: 0.78rem; color: var(--dark); font-weight: 700; min-width: 36px; text-align: right; }
-
     /* Drop zone */
     #drop-zone {
       position: relative;
@@ -621,8 +593,6 @@
       width: 100%; height: 100%;
       opacity: 0; cursor: pointer;
     }
-    #lut-wrap { display: none; }
-
     /* Preview area */
     #preview-wrap { display: none; }
     .preview-inner {
@@ -992,25 +962,6 @@
         <span id="intensity-val">100%</span>
       </div>
 
-      <!-- LUT -->
-      <div id="lut-wrap">
-        <div id="lut-row">
-          <select id="lut-select">
-            <option value="">No LUT</option>
-          </select>
-          <label id="lut-upload-label" title="Upload a .cube LUT file">
-            + Upload LUT
-            <input type="file" id="lut-file-input" accept=".cube" style="display:none">
-          </label>
-        </div>
-        <div id="lut-strength-row" style="display:none">
-          <label for="lut-strength-slider">LUT Strength</label>
-          <input type="range" id="lut-strength-slider" min="0" max="100" value="100">
-          <span id="lut-strength-val">100%</span>
-        </div>
-        <div id="lut-error" style="color:#c0392b;font-size:0.8rem;margin-top:4px"></div>
-      </div>
-
       <!-- Drop zone -->
       <div id="drop-zone" role="button" tabindex="0">
         <span class="dz-icon">&#127902;</span>
@@ -1082,7 +1033,6 @@
     let myName        = localStorage.getItem('name_' + albumId) || '';
     let selectedStyle = 'original';
     let optLeak = false, optDate = false, optBorder = false;
-    let selectedLutId   = '';
     let maxKnownId    = 0;
     let allPhotos     = [];
     let pollTimer     = null;
@@ -1145,48 +1095,6 @@
 
       document.getElementById('join-name-input').addEventListener('keydown', e => { if (e.key === 'Enter') submitJoin(); });
       document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeLightbox(); closeModal('share-modal'); closeModal('face-modal'); closeModal('find-me-modal'); } });
-
-      // LUT select
-      document.getElementById('lut-select').addEventListener('change', e => {
-        selectedLutId = e.target.value;
-        document.getElementById('lut-strength-row').style.display = selectedLutId ? '' : 'none';
-        schedulePreview(300);
-      });
-
-      // LUT strength slider
-      const lutSlider = document.getElementById('lut-strength-slider');
-      lutSlider.addEventListener('input', () => {
-        const v = lutSlider.value;
-        document.getElementById('lut-strength-val').textContent = v + '%';
-        schedulePreview(300);
-      });
-
-      // LUT file upload
-      document.getElementById('lut-upload-label').addEventListener('click', e => {
-        document.getElementById('lut-file-input').click();
-        e.preventDefault();
-      });
-      document.getElementById('lut-file-input').addEventListener('change', async e => {
-        const file = e.target.files[0];
-        e.target.value = '';
-        if (!file) return;
-        const errEl = document.getElementById('lut-error');
-        errEl.textContent = '';
-        const fd = new FormData();
-        fd.append('lut_file', file);
-        try {
-          const res  = await fetch(`/a/${albumId}/upload-lut`, { method: 'POST', body: fd });
-          const data = await res.json();
-          if (!res.ok) { errEl.textContent = data.error || 'Upload failed'; return; }
-          addLutOption(data.id, data.name, '', false);
-          document.getElementById('lut-select').value = String(data.id);
-          selectedLutId = String(data.id);
-          document.getElementById('lut-strength-row').style.display = '';
-          schedulePreview(300);
-        } catch {
-          errEl.textContent = 'Upload failed';
-        }
-      });
     });
 
     // ---- Join ----
@@ -1199,40 +1107,10 @@
       init();
     }
 
-    const _lutOptgroups = {};
-
-    function _getOrCreateOptgroup(label) {
-      if (_lutOptgroups[label]) return _lutOptgroups[label];
-      const sel = document.getElementById('lut-select');
-      const grp = document.createElement('optgroup');
-      grp.label = label;
-      sel.appendChild(grp);
-      _lutOptgroups[label] = grp;
-      return grp;
-    }
-
-    function addLutOption(id, name, category, builtin) {
-      const label = builtin ? (category || 'Film Presets') : 'My LUTs';
-      const grp = _getOrCreateOptgroup(label);
-      const opt = document.createElement('option');
-      opt.value = String(id);
-      opt.textContent = name;
-      grp.appendChild(opt);
-    }
-
-    async function loadLuts() {
-      try {
-        const res  = await fetch(`/a/${albumId}/luts`);
-        const luts = await res.json();
-        luts.forEach(l => addLutOption(l.id, l.name, l.category, l.builtin));
-      } catch {}
-    }
-
     function init() {
       document.getElementById('user-pill').textContent = myName;
       loadAllPhotos();
       loadPeople();
-      loadLuts();
       startPolling();
     }
 
@@ -1323,10 +1201,7 @@
       fd.append('light_leak',  optLeak   ? '1' : '0');
       fd.append('date_stamp',  optDate   ? '1' : '0');
       fd.append('film_border', optBorder ? '1' : '0');
-      if (selectedLutId) {
-        fd.append('lut_id',       selectedLutId);
-        fd.append('lut_strength', document.getElementById('lut-strength-slider').value);
-      }
+
 
       try {
         const res = await fetch('/a/' + albumId + '/preview', { method: 'POST', body: fd, signal: previewAbort.signal });
@@ -1363,10 +1238,7 @@
       fd.append('light_leak',   optLeak   ? '1' : '0');
       fd.append('date_stamp',   optDate   ? '1' : '0');
       fd.append('film_border',  optBorder ? '1' : '0');
-      if (selectedLutId) {
-        fd.append('lut_id',       selectedLutId);
-        fd.append('lut_strength', document.getElementById('lut-strength-slider').value);
-      }
+
 
       try {
         const res = await fetch('/a/' + albumId + '/upload', { method: 'POST', body: fd });

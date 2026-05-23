@@ -61,19 +61,6 @@ def init():
                 face_count INTEGER NOT NULL DEFAULT 1
             )
         ''')
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS luts (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                album_id    TEXT    NOT NULL,
-                name        TEXT    NOT NULL,
-                npy_path    TEXT    NOT NULL,
-                grid_size   INTEGER NOT NULL,
-                uploaded_at TEXT    NOT NULL,
-                category    TEXT    NOT NULL DEFAULT '',
-                is_builtin  INTEGER NOT NULL DEFAULT 0,
-                FOREIGN KEY(album_id) REFERENCES albums(id)
-            )
-        ''')
         conn.commit()
         # Indexes for hot queries
         for idx in [
@@ -93,8 +80,6 @@ def init():
             'ALTER TABLE faces   ADD COLUMN person_id INTEGER',
             'ALTER TABLE faces   ADD COLUMN match_confidence TEXT',
             'ALTER TABLE people  ADD COLUMN name TEXT',
-            "ALTER TABLE luts    ADD COLUMN category TEXT NOT NULL DEFAULT ''",
-            'ALTER TABLE luts    ADD COLUMN is_builtin INTEGER NOT NULL DEFAULT 0',
         ]:
             try:
                 conn.execute(stmt)
@@ -407,63 +392,3 @@ def get_photos_for_person(person_id, confidence=None):
         conn.close()
 
 
-# ---------------------------------------------------------------------------
-# LUTs
-# ---------------------------------------------------------------------------
-
-def add_lut(album_id, name, npy_path, grid_size, uploaded_at,
-            category='', is_builtin=0):
-    conn = _connect()
-    try:
-        cur = conn.execute(
-            'INSERT INTO luts (album_id, name, npy_path, grid_size, uploaded_at, category, is_builtin) '
-            'VALUES (?,?,?,?,?,?,?)',
-            (album_id, name, npy_path, grid_size, uploaded_at, category, is_builtin)
-        )
-        conn.commit()
-        return cur.lastrowid
-    finally:
-        conn.close()
-
-
-def get_luts(album_id):
-    conn = _connect()
-    try:
-        rows = conn.execute(
-            'SELECT id, name, grid_size, uploaded_at, category, is_builtin '
-            'FROM luts WHERE album_id=? AND is_builtin=0 ORDER BY id ASC',
-            (album_id,)
-        ).fetchall()
-        return [dict(r) for r in rows]
-    finally:
-        conn.close()
-
-
-def get_builtin_luts():
-    conn = _connect()
-    try:
-        rows = conn.execute(
-            'SELECT id, name, grid_size, category, is_builtin '
-            'FROM luts WHERE is_builtin=1 ORDER BY category ASC, name ASC'
-        ).fetchall()
-        return [dict(r) for r in rows]
-    finally:
-        conn.close()
-
-
-def has_builtin_luts():
-    conn = _connect()
-    try:
-        row = conn.execute('SELECT COUNT(*) FROM luts WHERE is_builtin=1').fetchone()
-        return row[0] > 0
-    finally:
-        conn.close()
-
-
-def get_lut(lut_id):
-    conn = _connect()
-    try:
-        row = conn.execute('SELECT * FROM luts WHERE id=?', (lut_id,)).fetchone()
-        return dict(row) if row else None
-    finally:
-        conn.close()

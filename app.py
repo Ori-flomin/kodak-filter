@@ -10,7 +10,6 @@ import urllib.request
 from datetime import datetime
 import qrcode
 import db
-import lut as lut_module
 
 _BASE        = os.path.dirname(__file__)
 MODELS_DIR   = os.environ.get('MODELS_DIR', _BASE)
@@ -308,97 +307,6 @@ def _make_thumbnail(img: 'Image.Image', max_w: int = 900) -> 'Image.Image':
     return img.resize((max_w, int(h * max_w / w)), Image.LANCZOS)
 
 db.init()
-
-# ---------------------------------------------------------------------------
-# Built-in t3mujinpack Hald CLUT LUTs
-# ---------------------------------------------------------------------------
-
-_BUILTIN_LUTS_DIR = os.path.join(_BASE, 'static', 'luts', 'builtin')
-_GITHUB_RAW = 'https://raw.githubusercontent.com/t3mujinpack/t3mujinpack/master/haldcluts/'
-
-_BUILTIN_LUT_FILES = [
-    ('Black & White',   't3mujinpack - Black and White - AGFA APX 100.png'),
-    ('Black & White',   't3mujinpack - Black and White - AGFA APX 25.png'),
-    ('Black & White',   't3mujinpack - Black and White - Fuji Neopan 1600.png'),
-    ('Black & White',   't3mujinpack - Black and White - Fuji Neopan Acros 100.png'),
-    ('Black & White',   't3mujinpack - Black and White - Ilford Delta 100.png'),
-    ('Black & White',   't3mujinpack - Black and White - Ilford Delta 3200.png'),
-    ('Black & White',   't3mujinpack - Black and White - Ilford Delta 400.png'),
-    ('Black & White',   't3mujinpack - Black and White - Ilford FP4 125.png'),
-    ('Black & White',   't3mujinpack - Black and White - Ilford HP5 Plus 400.png'),
-    ('Black & White',   't3mujinpack - Black and White - Ilford XP2.png'),
-    ('Black & White',   't3mujinpack - Black and White - Kodak T-Max 3200.png'),
-    ('Black & White',   't3mujinpack - Black and White - Kodak Tri-X 400.png'),
-    ('Color Negative',  't3mujinpack - Color Negative - Agfa Vista 100.png'),
-    ('Color Negative',  't3mujinpack - Color Negative - Agfa Vista 200.png'),
-    ('Color Negative',  't3mujinpack - Color Negative - Agfa Vista 400.png'),
-    ('Color Negative',  't3mujinpack - Color Negative - Fuji Pro 160C.png'),
-    ('Color Negative',  't3mujinpack - Color Negative - Fuji Pro 400H.png'),
-    ('Color Negative',  't3mujinpack - Color Negative - Fuji Pro 800Z.png'),
-    ('Color Negative',  't3mujinpack - Color Negative - Fuji Superia 100.png'),
-    ('Color Negative',  't3mujinpack - Color Negative - Fuji Superia 1600.png'),
-    ('Color Negative',  't3mujinpack - Color Negative - Fuji Superia 200.png'),
-    ('Color Negative',  't3mujinpack - Color Negative - Fuji Superia 400.png'),
-    ('Color Negative',  't3mujinpack - Color Negative - Fuji Superia 800.png'),
-    ('Color Negative',  't3mujinpack - Color Negative - Fuji Superia HG 1600.png'),
-    ('Color Negative',  't3mujinpack - Color Negative - Kodak ColorPlus 200.png'),
-    ('Color Negative',  't3mujinpack - Color Negative - Kodak Ektar 100.png'),
-    ('Color Negative',  't3mujinpack - Color Negative - Kodak Gold 200.png'),
-    ('Color Negative',  't3mujinpack - Color Negative - Kodak Portra 160 NC.png'),
-    ('Color Negative',  't3mujinpack - Color Negative - Kodak Portra 160 VC.png'),
-    ('Color Negative',  't3mujinpack - Color Negative - Kodak Portra 160.png'),
-    ('Color Negative',  't3mujinpack - Color Negative - Kodak Portra 400 NC.png'),
-    ('Color Negative',  't3mujinpack - Color Negative - Kodak Portra 400 UC.png'),
-    ('Color Negative',  't3mujinpack - Color Negative - Kodak Portra 400 VC.png'),
-    ('Color Negative',  't3mujinpack - Color Negative - Kodak Portra 400.png'),
-    ('Color Negative',  't3mujinpack - Color Negative - Kodak Portra 800.png'),
-    ('Color Negative',  't3mujinpack - Color Negative - Kodak Ultra Max 400.png'),
-    ('Color Slide',     't3mujinpack - Color Slide - Fuji Astia 100F.png'),
-    ('Color Slide',     't3mujinpack - Color Slide - Fuji Fortia SP 50.png'),
-    ('Color Slide',     't3mujinpack - Color Slide - Fuji Provia 100F.png'),
-    ('Color Slide',     't3mujinpack - Color Slide - Fuji Provia 400F.png'),
-    ('Color Slide',     't3mujinpack - Color Slide - Fuji Provia 400X.png'),
-    ('Color Slide',     't3mujinpack - Color Slide - Fuji Sensia 100.png'),
-    ('Color Slide',     't3mujinpack - Color Slide - Fuji Velvia 100.png'),
-    ('Color Slide',     't3mujinpack - Color Slide - Fuji Velvia 50.png'),
-    ('Color Slide',     't3mujinpack - Color Slide - Kodak Ektachrome 100 G.png'),
-    ('Color Slide',     't3mujinpack - Color Slide - Kodak Ektachrome 100 GX.png'),
-    ('Color Slide',     't3mujinpack - Color Slide - Kodak Ektachrome 100 VS.png'),
-    ('Color Slide',     't3mujinpack - Color Slide - Kodak Elite Chrome 400.png'),
-    ('Color Slide',     't3mujinpack - Color Slide - Kodak Kodakchrome 200.png'),
-    ('Color Slide',     't3mujinpack - Color Slide - Kodak Kodakchrome 25.png'),
-    ('Color Slide',     't3mujinpack - Color Slide - Kodak Kodakchrome 64.png'),
-]
-
-
-def _lut_display_name(filename):
-    """'t3mujinpack - Color Negative - Kodak Portra 400.png' → 'Kodak Portra 400'"""
-    parts = filename.replace('.png', '').split(' - ', 2)
-    return parts[2] if len(parts) == 3 else filename.replace('.png', '')
-
-
-def _bootstrap_builtin_luts():
-    if db.has_builtin_luts():
-        return
-    os.makedirs(_BUILTIN_LUTS_DIR, exist_ok=True)
-    uploaded_at = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
-    for category, filename in _BUILTIN_LUT_FILES:
-        png_path = os.path.join(_BUILTIN_LUTS_DIR, filename)
-        try:
-            if not os.path.isfile(png_path):
-                url = _GITHUB_RAW + urllib.request.quote(filename)
-                urllib.request.urlretrieve(url, png_path)
-            # Validate by parsing (also warms the cache)
-            size, _ = lut_module.parse_hald_png(open(png_path, 'rb').read())
-            name = _lut_display_name(filename)
-            db.add_lut('__builtin__', name, png_path, size, uploaded_at,
-                       category=category, is_builtin=1)
-            print(f'[LUT] registered: {name}')
-        except Exception as e:
-            print(f'[LUT] skipped {filename}: {e}')
-
-
-threading.Thread(target=_bootstrap_builtin_luts, daemon=True).start()
 
 # ---------------------------------------------------------------------------
 # Core film physics primitives
@@ -915,37 +823,14 @@ STYLE_NAMES = {
 
 
 def apply_filter(img, style='original', intensity=100,
-                 light_leak=False, date_stamp=False, film_border=False,
-                 lut_id=None, lut_strength=100):
+                 light_leak=False, date_stamp=False, film_border=False):
     original = img.convert('RGB')
 
-    if lut_id is not None:
-        lut_info = db.get_lut(lut_id)
-        if lut_info and os.path.isfile(lut_info['npy_path']):
-            # LUT mode: apply to original (neutral) image so the film color
-            # is accurate, then layer authentic physical film texture on top.
-            path = lut_info['npy_path']
-            lut_3d = (lut_module.load_hald_png(path) if path.endswith('.png')
-                      else np.load(path))
-            arr = np.array(original, dtype=np.uint8)
-            arr = lut_module.apply_lut(arr, lut_3d, strength=lut_strength / 100.0)
-            result = Image.fromarray(arr)
-            # Halation + grain + vignette give the physical vintage film feel
-            result = add_halation(result, strength=0.11, radius=14)
-            result = add_film_grain(result, intensity=17)
-            result = add_vignette(result, strength=0.38, feather=0.50)
-        else:
-            if style == 'original':
-                result = original.copy()
-            else:
-                fn, _ = STYLES.get(style, STYLES['portra-400'])
-                result = fn(original)
+    if style == 'original':
+        result = original.copy()
     else:
-        if style == 'original':
-            result = original.copy()
-        else:
-            fn, _ = STYLES.get(style, STYLES['portra-400'])
-            result = fn(original)
+        fn, _ = STYLES.get(style, STYLES['portra-400'])
+        result = fn(original)
 
         if intensity < 100 and style != 'original':
             orig_arr   = np.array(original,  dtype=np.float32)
@@ -1067,14 +952,6 @@ def album_exists(album_id):
     return jsonify({'exists': album_row is not None})
 
 
-@app.route('/a/<album_id>/luts')
-def album_luts(album_id):
-    if db.get_album(album_id) is None:
-        abort(404)
-    builtin = [dict(l, builtin=True)  for l in db.get_builtin_luts()]
-    custom  = [dict(l, builtin=False) for l in db.get_luts(album_id)]
-    return jsonify(builtin + custom)
-
 
 @app.route('/a/<album_id>/preview', methods=['POST'])
 @limiter.limit('60 per minute')
@@ -1094,51 +971,16 @@ def album_preview(album_id):
     light_leak   = request.form.get('light_leak', '0') == '1'
     date_stamp   = request.form.get('date_stamp', '0') == '1'
     film_border  = request.form.get('film_border', '0') == '1'
-    lut_id_raw   = request.form.get('lut_id', '')
-    lut_id       = int(lut_id_raw) if lut_id_raw.isdigit() else None
-    lut_strength = int(request.form.get('lut_strength', 100))
-
     img    = Image.open(BytesIO(raw)).convert('RGB')
     result = apply_filter(img, style, intensity=intensity,
                           light_leak=light_leak, date_stamp=date_stamp,
-                          film_border=film_border,
-                          lut_id=lut_id, lut_strength=lut_strength)
+                          film_border=film_border)
     result = _make_thumbnail(result, max_w=1200)
     buf = BytesIO()
     result.save(buf, format='JPEG', quality=85)
     buf.seek(0)
     return send_file(buf, mimetype='image/jpeg')
 
-
-@app.route('/a/<album_id>/upload-lut', methods=['POST'])
-@limiter.limit('10 per minute')
-def album_upload_lut(album_id):
-    if db.get_album(album_id) is None:
-        abort(404)
-    if 'lut_file' not in request.files:
-        return jsonify({'error': 'No lut_file field'}), 400
-    f = request.files['lut_file']
-    if not f.filename.lower().endswith('.cube'):
-        return jsonify({'error': 'Only .cube files are supported'}), 400
-
-    raw = f.read()
-    try:
-        size, lut_3d = lut_module.parse_cube(raw)
-    except ValueError as e:
-        return jsonify({'error': str(e)}), 400
-
-    luts_dir = os.path.join(ALBUMS_DIR, album_id, 'luts')
-    os.makedirs(luts_dir, exist_ok=True)
-
-    lut_name    = os.path.splitext(f.filename)[0]
-    token       = secrets.token_hex(8)
-    npy_path    = os.path.join(luts_dir, f'{token}.npy')
-    np.save(npy_path, lut_3d)
-
-    uploaded_at = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
-    lut_id      = db.add_lut(album_id, lut_name, npy_path, size, uploaded_at)
-
-    return jsonify({'id': lut_id, 'name': lut_name, 'grid_size': size})
 
 
 @app.route('/a/<album_id>/upload', methods=['POST'])
@@ -1167,15 +1009,10 @@ def album_upload(album_id):
     light_leak   = request.form.get('light_leak', '0') == '1'
     date_stamp   = request.form.get('date_stamp', '0') == '1'
     film_border  = request.form.get('film_border', '0') == '1'
-    lut_id_raw   = request.form.get('lut_id', '')
-    lut_id       = int(lut_id_raw) if lut_id_raw.isdigit() else None
-    lut_strength = int(request.form.get('lut_strength', 100))
-
     original = Image.open(BytesIO(raw)).convert('RGB')
     result   = apply_filter(original, style, intensity=intensity,
                             light_leak=light_leak, date_stamp=date_stamp,
-                            film_border=film_border,
-                            lut_id=lut_id, lut_strength=lut_strength)
+                            film_border=film_border)
 
     ts       = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
     filename = f'{ts}_{style}.jpg'
