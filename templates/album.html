@@ -804,14 +804,16 @@
       transition: background 0.15s;
     }
     #lightbox-close:hover { background: rgba(255,255,255,0.2); color: #fff; }
-    #lightbox-save {
+    #lightbox-hint {
       position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-      background: rgba(255,255,255,0.15); backdrop-filter: blur(4px);
-      color: #fff; border: 1px solid rgba(255,255,255,0.3);
-      padding: 8px 20px; border-radius: 20px; font-size: 0.9rem; font-weight: 600;
-      cursor: pointer; transition: background 0.15s;
+      color: rgba(255,255,255,0.7); font-size: 0.82rem; white-space: nowrap;
+      pointer-events: none;
     }
-    #lightbox-save:hover { background: rgba(255,255,255,0.25); }
+    #lightbox-hint button {
+      background: none; border: none; color: rgba(255,255,255,0.85);
+      font-size: 0.82rem; cursor: pointer; text-decoration: underline;
+      pointer-events: all; padding: 0;
+    }
 
     @media (max-width: 820px) {
       #album-hero { grid-template-columns: 1fr; }
@@ -881,10 +883,10 @@
   </div>
 
   <!-- Lightbox -->
-  <div id="lightbox" onclick="closeLightbox()">
+  <div id="lightbox">
     <button id="lightbox-close" onclick="closeLightbox()">&times;</button>
-    <button id="lightbox-save" onclick="event.stopPropagation();savePhoto(document.getElementById('lightbox-img').src)">&#8595; Save</button>
-    <img id="lightbox-img" src="" alt="">
+    <img id="lightbox-img" src="" alt="" onclick="closeLightbox()">
+    <div id="lightbox-hint">Long-press to save &middot; <button onclick="savePhoto(document.getElementById('lightbox-img').src)">Share / Download</button></div>
   </div>
 
   <!-- Main -->
